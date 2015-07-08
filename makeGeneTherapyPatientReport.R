@@ -282,8 +282,12 @@ write.csv(as.data.frame(standardizedDereplicatedSites),
 ##save.image("debug.RData")
 ##end setting variables for markdown report
 
+fig.path <- paste(unique(trial), unique(patient),
+                  format(Sys.Date(), format="%Y%m%d"), "Figures",
+                  sep=".")
+
 #### begin generating markdown ####
-unlink("figureByPatient", force=TRUE, recursive=TRUE)
+unlink(fig.path, force=TRUE, recursive=TRUE)
 mdfile <- paste(unique(trial), unique(patient),
                 format(Sys.Date(), format="%Y%m%d"), "md",
                 sep=".")
@@ -297,7 +301,7 @@ markdownToHTML(mdfile, htmlfile, extensions=c('tables'),
                stylesheet=file.path(codeDir, "GTSPreport.css") )
 
 #### clean up ####
-unlink("figureByPatient", force=TRUE, recursive=TRUE)
+#unlink("figureByPatient", force=TRUE, recursive=TRUE)
 unlink("CancerGeneList", force=TRUE, recursive=TRUE)
 unlink(mdfile, force=TRUE, recursive=TRUE)
 

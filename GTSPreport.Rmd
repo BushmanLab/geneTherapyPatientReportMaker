@@ -2,8 +2,19 @@
 `r format(Sys.Date(), "%b %d %Y")`
 
 ```{r setup,echo=FALSE}
-opts_chunk$set(fig.path='figureByPatient/', fig.align='left', comment="",
-               echo=FALSE, warning=FALSE, error=TRUE, message=FALSE, cache=F, results="asis")
+library(knitr)
+opts_chunk$set(
+  fig.path=paste0(fig.path, "/"), 
+  fig.align='left', 
+  comment="",
+  echo=FALSE, 
+  warning=FALSE, 
+  error=TRUE, 
+  message=FALSE, 
+  cache=FALSE, 
+  dpi=100,
+  dev=c("png","pdf","postscript"),
+  results="asis")
 options(knitr.table.format = 'html')
 ```
 
@@ -186,7 +197,7 @@ plotWordCloud(df.wordlist[[i]],
 ```{r worldbubble_Table, results='asis'}
 df.tab <- data.frame(
 	name=names(df.wordlist),
-	pngfile=file.path("figureByPatient", sprintf("wordlelist-%i.png", seq(df.wordlist))),
+	pngfile=file.path(fig.path, sprintf("wordlelist-%i.png", seq(df.wordlist))),
    stringsAsFactors=FALSE)
 df.tab$html <- sprintf("<img src='%s' alt='wordBubble'> <br />%s",
 	df.tab$pngfile,
