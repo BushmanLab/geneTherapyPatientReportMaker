@@ -92,19 +92,23 @@ message("\nGenerating report from the following sets")
 print(sampleName_GTSP)
 
 ##Load data if not using intSites database##
-sampleDir <- paste0(dataDir, sampleName_GTSP$sampleName)
-uniqueSamples <- lapply(sampleDir, function(path){
-    load(paste0(path, "/allSites.RData"))
-    allSites
-})
-names(uniqueSamples) <- sampleName_GTSP$sampleName
+if( length(dataDir)>0 ){    
+    sampleDir <- paste0(dataDir, sampleName_GTSP$sampleName)
+    uniqueSamples <- lapply(sampleDir, function(path){
+        load(paste0(path, "/allSites.RData"))
+        allSites
+    })
+    names(uniqueSamples) <- sampleName_GTSP$sampleName
 
-multihitSamples <- lapply(sampleDir, function(path){
-    load(paste0(path, "/multihitData.RData"))
-    multihitData
-})
-names(uniqueSamples) <- sampleName_GTSP$sampleName
+    multihitSamples <- lapply(sampleDir, function(path){
+        load(paste0(path, "/multihitData.RData"))
+        multihitData
+    })
+    names(uniqueSamples) <- sampleName_GTSP$sampleName
 
+    read_sites_sample_GTSP <- get_data_totals(sampleName_GTSP, uniqueSamples, multihitSamples)
+
+}
 
 if( !length(dataDir)>0 ){
     dbConn <- dbConnect(MySQL(), group=db_group_sites)
