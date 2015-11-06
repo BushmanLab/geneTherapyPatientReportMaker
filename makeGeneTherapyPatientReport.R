@@ -91,6 +91,21 @@ sampleName_GTSP$refGenome <- ref_genome
 message("\nGenerating report from the following sets")
 print(sampleName_GTSP)
 
+##Load data if not using intSites database##
+sampleDir <- paste0(dataDir, sampleName_GTSP$sampleName)
+uniqueSamples <- lapply(sampleDir, function(path){
+    load(paste0(path, "/allSites.RData"))
+    allSites
+})
+names(uniqueSamples) <- sampleName_GTSP$sampleName
+
+multihitSamples <- lapply(sampleDir, function(path){
+    load(paste0(path, "/multihitData.RData"))
+    multihitData
+})
+names(uniqueSamples) <- sampleName_GTSP$sampleName
+
+
 if( !length(dataDir)>0 ){
     dbConn <- dbConnect(MySQL(), group=db_group_sites)
     info <- dbGetInfo(dbConn)
@@ -141,6 +156,8 @@ stopifnot(length(unique(sampleName_GTSP$refGenome))==1)
 freeze <- sampleName_GTSP[1, "refGenome"]
 
 ##==========GET AND PERFORM BASIC DEREPLICATION/SONICABUND ON SITES=============
+
+####!!!!#####
 message("Fetching unique sites and estimating abundance")
 dbConn <- dbConnect(MySQL(), group=db_group_sites)
 info <- dbGetInfo(dbConn)
@@ -154,6 +171,9 @@ uniqueSites.gr <- GRanges(seqnames=Rle(sites$chr),
                                          end=pmax(sites$integration, sites$breakpoint)),
                           strand=Rle(sites$strand))
 mcols(uniqueSites.gr) <- sites[,c("sampleName", "GTSP")]
+
+####!!!!!!#####
+
 
 #standardize sites across all GTSPs
 isthere <- which("dplyr" == loadedNamespaces()) # temp work around  of
