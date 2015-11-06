@@ -15,6 +15,7 @@ set_args <- function(...) {
     parser$add_argument("-f", "--ref_genome", default="hg18", help="reference genome used for all samples")
     parser$add_argument("--sites_group", default="intsites_miseq.read", help="group to use for integration sites db from ~/.my.cnf")
     parser$add_argument("--gtsp_group", default="specimen_management", help="group to use for specimen management GTSP db from ~/.my.cnf")
+    parser$add_argument("-d", "--data_directory", default="", help="Set filepath to data instead of using intSite db")
     arguments <- parser$parse_args(...)
     
     ## gene files
@@ -45,6 +46,7 @@ db_group_sites <- arguments$sites_group
 db_group_gtsp <- arguments$gtsp_group
 ref_genome <- arguments$ref_genome
 codeDir <- arguments$codeDir
+dataDir <- arguments$data_directory
 
 #### INPUTS: csv file/table GTSP to sampleName ####
 csvfile <- arguments$sample_gtsp
@@ -89,21 +91,23 @@ sampleName_GTSP$refGenome <- ref_genome
 message("\nGenerating report from the following sets")
 print(sampleName_GTSP)
 
-dbConn <- dbConnect(MySQL(), group=db_group_sites)
-info <- dbGetInfo(dbConn)
-dbConn <- src_sql("mysql", dbConn, info = info)
+if( !length(dataDir)>0 ){
+    dbConn <- dbConnect(MySQL(), group=db_group_sites)
+    info <- dbGetInfo(dbConn)
+    dbConn <- src_sql("mysql", dbConn, info = info)
 
-if( !all(setNameExists(sampleName_GTSP, dbConn)) ) {
-    sampleNameIn <- paste(sprintf("'%s'", sampleName_GTSP$sampleName),
-                          collapse=",")
-    q <- sprintf("SELECT * FROM samples WHERE sampleName IN (%s)", sampleNameIn)
-    message("\nChecking database:\n",q,"\n")
-    write.table(tbl(dbConn, sql(q)), quote=FALSE, row.name=FALSE)
-    message()
-    stop("Was --ref_genome specified correctly or did query return all entries")
+    if( !all(setNameExists(sampleName_GTSP, dbConn)) ) {
+        sampleNameIn <- paste(sprintf("'%s'", sampleName_GTSP$sampleName),
+                              collapse=",")
+        q <- sprintf("SELECT * FROM samples WHERE sampleName IN (%s)", sampleNameIn)
+        message("\nChecking database:\n",q,"\n")
+        write.table(tbl(dbConn, sql(q)), quote=FALSE, row.name=FALSE)
+        message()
+        stop("Was --ref_genome specified correctly or did query return all entries")
+    }
+
+    read_sites_sample_GTSP <- get_read_site_totals(sampleName_GTSP, dbConn)
 }
-
-read_sites_sample_GTSP <- get_read_site_totals(sampleName_GTSP, dbConn)
 
 sets <- get_metadata_for_GTSP(unique(sampleName_GTSP$GTSP), db_group_gtsp)
 
