@@ -166,24 +166,21 @@ stopifnot(length(unique(sampleName_GTSP$refGenome))==1)
 freeze <- sampleName_GTSP[1, "refGenome"]
 
 ##==========GET AND PERFORM BASIC DEREPLICATION/SONICABUND ON SITES=============
+if( !length(dataDir)>0 ){
+    message("Fetching unique sites and estimating abundance")
+    dbConn <- dbConnect(MySQL(), group=db_group_sites)
+    info <- dbGetInfo(dbConn)
+    dbConn <- src_sql("mysql", dbConn, info = info)
+    sites <- merge(getUniquePCRbreaks(sampleName_GTSP, dbConn), sampleName_GTSP)
+    names(sites)[names(sites)=="position"] <- "integration"
 
-####!!!!#####
-message("Fetching unique sites and estimating abundance")
-dbConn <- dbConnect(MySQL(), group=db_group_sites)
-info <- dbGetInfo(dbConn)
-dbConn <- src_sql("mysql", dbConn, info = info)
-sites <- merge(getUniquePCRbreaks(sampleName_GTSP, dbConn), sampleName_GTSP)
-names(sites)[names(sites)=="position"] <- "integration"
-
-#we really don't care about seqinfo - we just want a GRange object for easy manipulation
-uniqueSites.gr <- GRanges(seqnames=Rle(sites$chr),
-                          ranges=IRanges(start=pmin(sites$integration, sites$breakpoint),
-                                         end=pmax(sites$integration, sites$breakpoint)),
-                          strand=Rle(sites$strand))
-mcols(uniqueSites.gr) <- sites[,c("sampleName", "GTSP")]
-
-####!!!!!!#####
-
+    #we really don't care about seqinfo - we just want a GRange object for easy manipulation
+    uniqueSites.gr <- GRanges(seqnames=Rle(sites$chr),
+                              ranges=IRanges(start=pmin(sites$integration, sites$breakpoint),
+                                             end=pmax(sites$integration, sites$breakpoint)),
+                              strand=Rle(sites$strand))
+    mcols(uniqueSites.gr) <- sites[,c("sampleName", "GTSP")]
+}
 
 #standardize sites across all GTSPs
 isthere <- which("dplyr" == loadedNamespaces()) # temp work around  of
@@ -409,6 +406,8 @@ summaryTable$VCN <- ifelse(summaryTable$VCN == 0, NA, summaryTable$VCN)
 timepointPopulationInfo <- melt(timepointPopulationInfo, "group")
 
 #==================Get abundance for multihit events=====================
+
+###!!!!!!!!!
 message("Fetching multihit sites and estimating abundance")
 dbConn <- dbConnect(MySQL(), group=db_group_sites)
 info <- dbGetInfo(dbConn)
