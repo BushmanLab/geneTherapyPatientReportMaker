@@ -108,6 +108,12 @@ if( length(dataDir)>0 ){
 
     read_sites_sample_GTSP <- get_data_totals(sampleName_GTSP, uniqueSamples, multihitSamples)
 
+    #### Join samples to make uniqueSites.gr and sites.multi ####
+    uniqueSamples <- do.call(c, lapply(1:length(uniqueSamples), function(i){uniqueSamples[[i]]}))
+    
+    uniqueSites.gr <- granges(uniqueSamples)
+    uniqueSites.gr$sampleName <- uniqueSamples$sampleName
+    mcols(uniqueSites.gr) <- merge(mcols(uniqueSites.gr), sampleName_GTSP, by = "sampleName")
 }
 
 if( !length(dataDir)>0 ){
