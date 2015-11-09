@@ -28,7 +28,7 @@ get_count_per_GTSP <- function(sampleName_GTSP, database_function, column_name, 
 get_data_totals <- function(sampleName_GTSP, uniqueSites, multihitSites){
     uniqueReads <- sapply(uniqueSites, function(sites){length(unique(names(sites)))})
     multihitReads <- sapply(multihitSites, function(multihits){
-	reads <- sum(sapply(multihits, function(hits){length(unique(names(hits)))}))
+	reads <- length(unique(names(multihits)))
 	reads
     })
     readTotals <- data.frame( 

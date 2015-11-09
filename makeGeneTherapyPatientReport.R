@@ -100,13 +100,19 @@ if( length(dataDir)>0 ){
     })
     names(uniqueSamples) <- sampleName_GTSP$sampleName
 
+    multihitReads <- lapply(sampleDir, function(path){
+        load(paste0(path, "/multihitData.RData"))
+        names(multihitData$unclusteredMultihits)
+    })
+    names(multihitReads) <- sampleName_GTSP$sampleName
+
     multihitSamples <- lapply(sampleDir, function(path){
         load(paste0(path, "/multihitData.RData"))
         multihitData$clusteredMultihitPositions
     })
     names(multihitSamples) <- sampleName_GTSP$sampleName
 
-    read_sites_sample_GTSP <- get_data_totals(sampleName_GTSP, uniqueSamples, multihitSamples)
+    read_sites_sample_GTSP <- get_data_totals(sampleName_GTSP, uniqueSamples, multihitReads)
 
     #### Join samples to make uniqueSites.gr and sites.multi ####
     uniqueSamples <- do.call(c, lapply(1:length(uniqueSamples), function(i){uniqueSamples[[i]]}))
