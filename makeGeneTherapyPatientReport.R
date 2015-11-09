@@ -415,19 +415,23 @@ timepointPopulationInfo <- melt(timepointPopulationInfo, "group")
 if( length(dataDir)>0 ){
     sites.multi <- do.call(rbind, lapply(1:length(multihitSamples), function(i){
 	multihits <- multihitSamples[[i]]
-	multihits <- do.call(rbind, lapply(1:length(multihits), function(j){
-	    cluster.gr <- multihits[[j]]
-	    sampleName <- names(multihitSamples[i])
- 	    cluster.df <- data.frame(
-		"posID" = paste0(seqnames(cluster.gr), strand(cluster.gr), 
-			    ifelse(strand(cluster.gr) == "+", start(cluster.gr), end(cluster.gr))),
-		"multihitID" = rep(paste0(i, "_", j), length(cluster.gr)),
-		"sampleName" = rep(sampleName, length(cluster.gr)),
-	        "length" = width(cluster.gr),
-	    	"GTSP" = rep(strsplit(sampleName, "-")[[1]][1], length(cluster.gr))
-	    )
-	    cluster.df
-	}))
+	if( length(multihits)>0 ){    
+	    multihits <- do.call(rbind, lapply(1:length(multihits), function(j){
+	        cluster.gr <- multihits[[j]]
+	        sampleName <- names(multihitSamples[i])
+ 	        cluster.df <- data.frame(
+		    "posID" = paste0(seqnames(cluster.gr), strand(cluster.gr), 
+		    	      ifelse(strand(cluster.gr) == "+", start(cluster.gr), end(cluster.gr))),
+		    "multihitID" = rep(paste0(i, "_", j), length(cluster.gr)),
+		    "sampleName" = rep(sampleName, length(cluster.gr)),
+	            "length" = width(cluster.gr),
+	    	    "GTSP" = rep(strsplit(sampleName, "-")[[1]][1], length(cluster.gr))
+	        )
+	        cluster.df
+	    }))
+	}else{
+	    multihits <- data.frame()
+	}
 	multihits
     }))
     row.names(sites.multi) <- NULL
