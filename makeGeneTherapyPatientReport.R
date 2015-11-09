@@ -104,7 +104,7 @@ if( length(dataDir)>0 ){
         load(paste0(path, "/multihitData.RData"))
         multihitData
     })
-    names(uniqueSamples) <- sampleName_GTSP$sampleName
+    names(multihitSamples) <- sampleName_GTSP$sampleName
 
     read_sites_sample_GTSP <- get_data_totals(sampleName_GTSP, uniqueSamples, multihitSamples)
 
@@ -406,13 +406,27 @@ summaryTable$VCN <- ifelse(summaryTable$VCN == 0, NA, summaryTable$VCN)
 timepointPopulationInfo <- melt(timepointPopulationInfo, "group")
 
 #==================Get abundance for multihit events=====================
-
-###!!!!!!!!!
-message("Fetching multihit sites and estimating abundance")
-dbConn <- dbConnect(MySQL(), group=db_group_sites)
-info <- dbGetInfo(dbConn)
-dbConn <- src_sql("mysql", dbConn, info = info)
-sites.multi <- merge( suppressWarnings(getMultihitLengths(sampleName_GTSP, dbConn)), sampleName_GTSP)
+if( length(dataDir)>0 ){
+    sites.multi <- lapply(1:length(multihitSamples), function(i){
+	multihits <- multihitSamples[[i]]
+	multihits <- lapply(1:length(multihits), function(j){
+	    cluster <- multihits[[j]]
+	    cluster$multihitID <- paste0(i, ":", j)
+	    sampleName <- names(multihitSample[i])
+	    cluster$sampleName <- sampleName
+	    cluster$length <- width(cluster)
+	    cluster$GTSP <- strsplit(sampleName, "-")[[1]][1]
+	    as.data.fame(cluster)
+	})
+	multihits
+    })
+}else{
+    message("Fetching multihit sites and estimating abundance")
+    dbConn <- dbConnect(MySQL(), group=db_group_sites)
+    info <- dbGetInfo(dbConn)
+    dbConn <- src_sql("mysql", dbConn, info = info)
+    sites.multi <- merge( suppressWarnings(getMultihitLengths(sampleName_GTSP, dbConn)), sampleName_GTSP)
+}
 
 if( nrow(sites.multi) > 0 ) {
     sites.multi <- (sites.multi %>%
