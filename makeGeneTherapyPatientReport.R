@@ -409,17 +409,22 @@ timepointPopulationInfo <- melt(timepointPopulationInfo, "group")
 if( length(dataDir)>0 ){
     sites.multi <- lapply(1:length(multihitSamples), function(i){
 	multihits <- multihitSamples[[i]]
-	multihits <- lapply(1:length(multihits), function(j){
-	    cluster <- multihits[[j]]
-	    cluster$multihitID <- paste0(i, ":", j)
-	    sampleName <- names(multihitSample[i])
-	    cluster$sampleName <- sampleName
-	    cluster$length <- width(cluster)
-	    cluster$GTSP <- strsplit(sampleName, "-")[[1]][1]
-	    as.data.fame(cluster)
-	})
+	multihits <- do.call(rbind, lapply(1:length(multihits), function(j){
+	    cluster.gr <- multihits[[j]]
+	    sampleName <- names(multihitSamples[i])
+ 	    cluster.df <- data.frame(
+		"readID" = names(cluster.gr),
+		"multihitID" = rep(paste0(i, "_", j), length(cluster.gr)),
+		"sampleName" = rep(sampleName, length(cluster.gr)),
+	        "length" = width(cluster.gr),
+	    	"GTSP" = rep(strsplit(sampleName, "-")[[1]][1], length(cluster.gr))
+	    )
+	    cluster.df
+	}))
 	multihits
     })
+    sites.multi <- do.call(rbind, sites.multi)
+    row.names(sites.multi) <- NULL
 }else{
     message("Fetching multihit sites and estimating abundance")
     dbConn <- dbConnect(MySQL(), group=db_group_sites)

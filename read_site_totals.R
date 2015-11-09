@@ -33,9 +33,9 @@ get_data_totals <- function(sampleName_GTSP, uniqueSites, multihitSites){
     })
     readTotals <- data.frame( 
 	"sampleName" = sampleName_GTSP$sampleName,
-	"refGenome" = refGenome,
+	"refGenome" = ref_genome,
 	"TotalReads" = uniqueReads + multihitReads
     )
     sample_count_GTSP <- merge(readTotals, sampleName_GTSP)
-    aggregate(sample_count_GTSP["TotalReads"], sample_count_GTSP["GTSP"])
+    aggregate(sample_count_GTSP["TotalReads"], sample_count_GTSP["GTSP"], FUN=sum)
 }
