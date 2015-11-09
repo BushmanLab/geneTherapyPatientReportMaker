@@ -102,7 +102,7 @@ if( length(dataDir)>0 ){
 
     multihitSamples <- lapply(sampleDir, function(path){
         load(paste0(path, "/multihitData.RData"))
-        multihitData
+        multihitData$clusteredMultihitPositions
     })
     names(multihitSamples) <- sampleName_GTSP$sampleName
 
@@ -407,13 +407,14 @@ timepointPopulationInfo <- melt(timepointPopulationInfo, "group")
 
 #==================Get abundance for multihit events=====================
 if( length(dataDir)>0 ){
-    sites.multi <- lapply(1:length(multihitSamples), function(i){
+    sites.multi <- do.call(rbind, lapply(1:length(multihitSamples), function(i){
 	multihits <- multihitSamples[[i]]
 	multihits <- do.call(rbind, lapply(1:length(multihits), function(j){
 	    cluster.gr <- multihits[[j]]
 	    sampleName <- names(multihitSamples[i])
  	    cluster.df <- data.frame(
-		"readID" = names(cluster.gr),
+		"posID" = paste0(seqnames(clusters.gr), strand(clusters.gr), 
+			    ifelse(strand(clusters.gr == "+", start(clusters.gr), end(clusters.gr))),
 		"multihitID" = rep(paste0(i, "_", j), length(cluster.gr)),
 		"sampleName" = rep(sampleName, length(cluster.gr)),
 	        "length" = width(cluster.gr),
@@ -422,8 +423,7 @@ if( length(dataDir)>0 ){
 	    cluster.df
 	}))
 	multihits
-    })
-    sites.multi <- do.call(rbind, sites.multi)
+    }))
     row.names(sites.multi) <- NULL
 }else{
     message("Fetching multihit sites and estimating abundance")
