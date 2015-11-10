@@ -27,7 +27,21 @@ GTSP0308-3,GTSP0308,pFR03
 * the `GTSPxxxx` names must correspond to the same patient,
 * the `GTSPxxxx` names must be in the `specimen_management.gtsp` database,
 * all sites should be computed based on one reference genome.
-  
+
+An option is available to generate reports without having the integration sites loaded into the database. The structure of the data through needs to be in the terminal format from `intSiteCaller`. For this method, the allSites.RData and multihitData.RData files need to be present for each sample to be processed. An example is below:
+```
+Data/
+    GTSP0308-1/
+    	allSites.RData
+    	multihitData.RData
+    	...
+    GTSP0308-2/
+    	allSites.RData
+    	multihitData.RData
+    	...
+    ...
+```
+
 #### Output
 `$trial.$patient.$today.html`
 
@@ -44,6 +58,7 @@ GTSP0308-3,GTSP0308,pFR03
 Rscript makeGeneTherapyPatientReport.R                     #read in sampleName_GTSP.csv by default
 Rscript path/to/makeGeneTherapyPatientReport.R pFR03.csv   #generated above
 Rscript path/to/makeGeneTherapyPatientReport.R pFR03.csv -s #determine abundance by sonicLength package (Berry, C. 2012)
+Rscript path/to/makeGeneTherapyPatientReport.R pFR02.csv -d path/to/Data/ #Generate report from processed data set
 ```
 
 - 3 `check_gtsp_patient.R`: get trial and patient information for the GTSPxxxx folders
