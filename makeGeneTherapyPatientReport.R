@@ -318,10 +318,12 @@ barplotAbunds$CellType <- factor(barplotAbunds$CellType,
                                  levels=CellType_order)
 
 #detailed abundance plot
-abundCutoff.detailed <- getAbundanceThreshold(standardizedDereplicatedSites, 50)
+cutoff_genes <- getMostAbundantGenes(standardizedDereplicatedSites, 50)
+abundCutoff.detailed <- cutoff_genes[[1]]
+frequent_genes <- cutoff_genes[[2]]
 
-detailedAbunds <- getAbundanceSums(filterLowAbund(standardizedDereplicatedSites,
-                                                 abundCutoff.detailed),
+detailedAbunds <- getAbundanceSums(maskGenes(standardizedDereplicatedSites,
+                                                 frequent_genes),
                                   c("CellType", "Timepoint"))
 
 categorySums <- sapply(split(detailedAbunds$estAbundProp,
