@@ -16,6 +16,7 @@ set_args <- function(...) {
     parser$add_argument("--sites_group", default="intsites_miseq.read", help="group to use for integration sites db from ~/.my.cnf")
     parser$add_argument("--gtsp_group", default="specimen_management", help="group to use for specimen management GTSP db from ~/.my.cnf")
     parser$add_argument("-d", "--data_directory", default="", help="Set filepath to data instead of using intSite db")
+    parser$add_argument("--output", help='HTML and MD file names instead of Trial.Patient.Date name')
     arguments <- parser$parse_args(...)
     
     ## gene files
@@ -24,7 +25,10 @@ set_args <- function(...) {
     if(grepl("^mm", arguments$ref_genome)) arguments$oncoGeneFile <- "allonco_no_pipes.mm.csv"
     stopifnot( arguments$ref_genome!="" )
     
-    arguments$adverseGeneFile <- "genes_adverse_event.csv"
+    ## note this file was obtained by
+    ## wget http://www.bushmanlab.org/assets/doc/humanLymph.tsv
+    ## it contains 38 gene names associated with Lymphoma
+    arguments$adverseGeneFile <- "humanLymph.tsv"
     
     ## code dir past to Rscript
     codeDir <- dirname(sub("--file=", "", grep("--file=", commandArgs(trailingOnly=FALSE), value=T)))
@@ -229,17 +233,17 @@ unique_sites_per_GTSP <- data.frame("GTSP" = names(unique_sites_per_GTSP),
                                     "UniqueSites" = unique_sites_per_GTSP)
 sets <- merge(sets, unique_sites_per_GTSP, by = "GTSP")
 
-vectors_recovered <- (standardizedReplicatedSites %>%
+cells_recovered <- (standardizedReplicatedSites %>%
                               as.data.frame %>%
                               select(GTSP, replicate, posid, width) %>%
                               distinct %>%
                               group_by(GTSP) %>%
                               count(GTSP))
 
-unique_vectors_per_GTSP <- data.frame("GTSP" = vectors_recovered$GTSP,
-                                      "Vectors" = vectors_recovered$n)                             
+unique_cells_per_GTSP <- data.frame("GTSP" = cells_recovered$GTSP,
+                                      "InferredCells" = cells_recovered$n)                             
 
-sets <- merge(sets, unique_vectors_per_GTSP, by = "GTSP")
+sets <- merge(sets, unique_cells_per_GTSP, by = "GTSP")
 #============CALCULATE POPULATION SIZE/DIVERSITY INFORMATION=================
 populationInfo <- getPopulationInfo(standardizedReplicatedSites,
                                     standardizedDereplicatedSites,
@@ -296,8 +300,11 @@ standardizedDereplicatedSites <- getNearestFeature(standardizedDereplicatedSites
                                                    feature.colnam="name2")
 
 
-wantedgenes <- scan(file=file.path(codeDir, arguments$adverseGeneFile), what='charactor')
-wantedgenes <- wantedgenes[!grepl("geneName", wantedgenes, ignore.case=TRUE)]
+wantedgenes <- as.character(
+    read.csv(file.path(codeDir, arguments$adverseGeneFile),
+             sep="\t",
+             header=TRUE)$symbol)
+stopifnot(length(wantedgenes)>=1)
 
 ## * in transcription units
 ## ~ within 50kb of a onco gene 
@@ -391,20 +398,20 @@ badActorData <- lapply(badActorData, function(x){
 timepoint <- levels(sets$Timepoint)
 
 cols <- c("Trial", "GTSP", "Patient", "Timepoint", "CellType", 
-          "TotalReads", "Vectors", "UniqueSites", "FragMethod", "VCN")
+          "TotalReads", "InferredCells", "UniqueSites", "FragMethod", "VCN")
 summaryTable <- arrange(sets,Timepoint,CellType)
 summaryTable <- summaryTable[,cols]
 
 ##cols <- c("Patient", "Timepoint", "CellType", "UniqueSites",
 ##          "Replicates", "FragMethod", "VCN", "S.chao1", "Gini", "Shannon")
-cols <- c("Patient", "Timepoint", "CellType", "Vectors", "UniqueSites",
+cols <- c("Patient", "Timepoint", "CellType", "InferredCells", "UniqueSites",
           "Replicates", "FragMethod", "VCN", "Gini", "Shannon")
 popSummaryTable <- merge(sets,  populationInfo, by.x="GTSP", by.y="group")
 popSummaryTable <- arrange(popSummaryTable,Timepoint,CellType)
 ##popSummaryTable <- popSummaryTable[,cols]
 
 cols <- c("Trial", "GTSP", "Replicates", "Patient", "Timepoint", "CellType", 
-          "TotalReads", "Vectors", "UniqueSites", "FragMethod", "VCN", "Gini", "Shannon")
+          "TotalReads", "InferredCells", "UniqueSites", "FragMethod", "VCN", "Gini", "Shannon")
 summaryTable <- popSummaryTable[,cols]
 
 summaryTable$VCN <- ifelse(summaryTable$VCN == 0, NA, summaryTable$VCN)
@@ -472,6 +479,10 @@ unlink(fig.path, force=TRUE, recursive=TRUE)
 mdfile <- paste(unique(trial), unique(patient),
                 format(Sys.Date(), format="%Y%m%d"), "md",
                 sep=".")
+
+if ( ! is.null(arguments$output)) {
+    mdfile <- paste(arguments$output, 'md', sep='.')
+}
 
 htmlfile <- gsub("\\.md$",".html",mdfile)
 options(knitr.table.format='html')

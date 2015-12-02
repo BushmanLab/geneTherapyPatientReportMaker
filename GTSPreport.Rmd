@@ -54,7 +54,7 @@ The relative abundance of cell clones is summarized in the attached stacked bar 
  - ```GeneName``` refers to the closest gene to either end and strand,  
  - __*__  indicates the site is within a transcription unit,  
  - __~__  indicates the site is within 50kb of a cancer related gene,  
- - __!__  indicates the gene was reported to be related with adverse events in previous gene therapy trials (these include genes involved in adverse events, and genes at clustered integration sites from the first SCID trial).  
+ - __!__  indicates the gene was assocaited with lymphoma in humans.  
 </font>
  
 Integration sites were recovered using ligation mediated PCR after random fragmentation of genomic DNA, which reduces recovery biases compared with restriction enzyme cleavage. Relative abundance was not measured from read counts, which are known to be inaccurate, but from marks introduced into DNA specimens prior to PCR amplification using the SonicLength method [PMID:22238265](http://www.ncbi.nlm.nih.gov/pubmed/22238265).
