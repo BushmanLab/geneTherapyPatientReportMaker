@@ -59,7 +59,7 @@ The relative abundance of cell clones is summarized in the attached stacked bar 
  
 Integration sites were recovered using ligation mediated PCR after random fragmentation of genomic DNA, which reduces recovery biases compared with restriction enzyme cleavage. Relative abundance was not measured from read counts, which are known to be inaccurate, but from marks introduced into DNA specimens prior to PCR amplification using the SonicLength method [PMID:22238265](http://www.ncbi.nlm.nih.gov/pubmed/22238265).
 
-In the barplots below, any sites with Estimated Relative Abundance below `r percent(abundCutoff.barplots)` are binned as LowAbund.
+In the barplots below, any sites with Estimated Absolute Abundance below `r abundCutoff.barplots` are binned as LowAbund.
 
 ```{r barPlots, fig.height=12, fig.width=12}
 siteColors = structure(gg_color_hue(length(unique(barplotAbunds$maskedRefGeneName))), names=unique(barplotAbunds$maskedRefGeneName))
@@ -72,7 +72,7 @@ ggplot(data=barplotAbunds, aes(Timepoint, estAbundProp, fill=maskedRefGeneName))
 ```
 ***
 <P style="page-break-before: always">
-Here is another way to perceive top ranking integration sites by genes within each celltype.  Any sites with Estimated Relative Abundance below `r percent(abundCutoff.detailed)` are binned as LowAbund.
+Here is another way to perceive top ranking integration sites by genes within each celltype.  Any sites with Estimated Absolute Abundance below `r abundCutoff.detailed` are binned as LowAbund.
 
 ```{r sitetype_heatmap, fig.width=12, fig.height=11}
 ggplot(data=detailedAbunds, aes(Timepoint, maskedRefGeneName, fill=estAbundProp)) + geom_tile() +

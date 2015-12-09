@@ -343,11 +343,12 @@ standardizedDereplicatedSites$nearest_refSeq_gene <- paste0(
 
 #===================GENERATE EXPANDED CLONE DATAFRAMES======================
 #barplots
-abundCutoff.barplots <- getAbundanceThreshold(standardizedDereplicatedSites, 10)
+cutoff_genes_barplot <- getMostAbundantGenes(standardizedDereplicatedSites, 15)
+abundCutoff.barplots <- cutoff_genes_barplot[[1]]
+frequent_genes_barplot <- cutoff_genes_barplot[[2]]
 
-barplotAbunds <- getAbundanceSums(filterLowAbund(standardizedDereplicatedSites,
-                                                 abundCutoff.barplots),
-                                  c("CellType", "Timepoint"))
+barplotAbunds <- getAbundanceSums(maskGenes(
+    standardizedDereplicatedSites,frequent_genes_barplot), c("CellType", "Timepoint"))
 
 barplotAbunds <- order_barplot(barplotAbunds)
 CellType_order <- unique(barplotAbunds$CellType)
@@ -355,11 +356,12 @@ barplotAbunds$CellType <- factor(barplotAbunds$CellType,
                                  levels=CellType_order)
 
 #detailed abundance plot
-abundCutoff.detailed <- getAbundanceThreshold(standardizedDereplicatedSites, 50)
+cutoff_genes <- getMostAbundantGenes(standardizedDereplicatedSites, 50)
+abundCutoff.detailed <- cutoff_genes[[1]]
+frequent_genes <- cutoff_genes[[2]]
 
-detailedAbunds <- getAbundanceSums(filterLowAbund(standardizedDereplicatedSites,
-                                                 abundCutoff.detailed),
-                                  c("CellType", "Timepoint"))
+detailedAbunds <- getAbundanceSums(maskGenes(
+    standardizedDereplicatedSites, frequent_genes), c("CellType", "Timepoint"))
 
 categorySums <- sapply(split(detailedAbunds$estAbundProp,
                              detailedAbunds$maskedRefGeneName),sum)
