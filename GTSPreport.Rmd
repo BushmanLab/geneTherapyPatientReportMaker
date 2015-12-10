@@ -40,7 +40,8 @@ The graph below visualizes population based summaries as a function of time.
 ```{r pop_graphs, results='asis', fig.width=8, fig.height=6}
 if(length(unique(timepointPopulationInfo$group)) >1 ){
   ggplot(data=timepointPopulationInfo, aes(group, value)) + geom_bar(stat="identity") + facet_wrap(~variable, scales="free") +
-    scale_x_discrete(limits = unique(timepointPopulationInfo$group))
+    scale_x_discrete(limits = unique(timepointPopulationInfo$group)) +
+    theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1))
 }else{cat(paste0("**Only one timepoint, ", unique(levels(timepointPopulationInfo$group)), ", present.  Insufficient data available to plot population estimators across timepoints.**"))}
 ```
 
@@ -62,22 +63,25 @@ Integration sites were recovered using ligation mediated PCR after random fragme
 In the barplots below, any sites with Estimated Absolute Abundance below `r abundCutoff.barplots` are binned as LowAbund.
 
 ```{r barPlots, fig.height=12, fig.width=12}
-siteColors = structure(gg_color_hue(length(unique(barplotAbunds$maskedRefGeneName))), names=unique(barplotAbunds$maskedRefGeneName))
+gene_names_barplot <- unique(barplotAbunds$maskedRefGeneName)
+colors_barplot <- colorRampPalette(brewer.pal(12, "Paired"))(length(gene_names_barplot))
+siteColors <- structure(colors_barplot, names=gene_names_barplot)
 siteColors["LowAbund"] <- "#E0E0E0"
 
 ggplot(data=barplotAbunds, aes(Timepoint, estAbundProp, fill=maskedRefGeneName)) +
   geom_bar(stat="identity") + facet_wrap(~CellType, scales="free") + scale_fill_manual(values=siteColors) +
   labs(y="Relative Sonic Abundance", x="Timepoint", fill="GeneNames") +
-  scale_y_continuous(labels=percent)
+  scale_y_continuous(labels=percent)  +
+  theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1))
 ```
 ***
 <P style="page-break-before: always">
 Here is another way to perceive top ranking integration sites by genes within each celltype.  Any sites with Estimated Absolute Abundance below `r abundCutoff.detailed` are binned as LowAbund.
 
-```{r sitetype_heatmap, fig.width=12, fig.height=11}
+```{r sitetype_heatmap, fig.width=12, fig.height=16}
 ggplot(data=detailedAbunds, aes(Timepoint, maskedRefGeneName, fill=estAbundProp)) + geom_tile() +
   scale_fill_continuous(name='Relative\nAbundance', labels=percent, low="#E5F5E0", high="#2B8CBE") + 
-  facet_grid(.~CellType, scales="free", space="free") + labs(y="SiteType", x="Timepoint") +
+  facet_wrap(~CellType, scales="free_x", ncol=6) + labs(y="SiteType", x="Timepoint") +
   theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1))
 ```
 
