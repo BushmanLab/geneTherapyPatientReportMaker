@@ -19,7 +19,6 @@ set_args <- function(...) {
     parser$add_argument("--ref_seq", help="read Ref Seq genes from file")
     parser$add_argument("--output", help='HTML and MD file names instead of Trial.Patient.Date name')
 
->>>>>>> origin/master
     arguments <- parser$parse_args(...)
     
     ## gene files
