@@ -23,10 +23,33 @@ options(knitr.table.format = 'html')
 <P style="page-break-before: always">
 ## Introduction
 
-The attached report describes results of analysis of integration site distributions and relative abundance for samples from gene therapy trials. For cases of gene correction in circulating blood cells, it is possible to harvest cells sequentially from blood to monitor cell populations. Frequency of isolation information can provide information on the clonal structure of the population. This report summarizes results for subject `r sanitize(patient)` over time points `r sanitize(paste(timepoint,collapse=", "))` in UCSC genome draft `r sanitize(freeze)`. 
+The attached report describes results of analysis of integration site
+distributions and relative abundance for samples from gene therapy trials. For
+cases of gene correction in circulating blood cells, it is possible to harvest
+cells sequentially from blood to monitor cell populations. Frequency of
+isolation information can provide information on the clonal structure of the
+population. This report summarizes results for subject `r sanitize(patient)`
+over time points `r sanitize(paste(timepoint,collapse=", "))` in UCSC genome
+draft `r sanitize(freeze)`. 
 
-The samples studied in this report, the numbers of sequence reads, recovered integration vectors, and unique integration sites available for this subject are shown below. We quantify population clone diversity using [Gini coefficients](https://en.wikipedia.org/wiki/Gini_coefficient) and [Shannon index](https://en.wikipedia.org/wiki/Diversity_index#Shannon_index). The Gini coefficient provides a measure of inequality in clonal abundance in each sample. The coefficient equals zero when all sites are equally abundant (polyclonal) and increases as fewer sites account for more of the total (oligoclonal). Shannon index is another widely used measure of diversity and it accounts for both abundance and evenness of the integration events.
+The samples studied in this report, the numbers of sequence reads, recovered
+integration vectors, and unique integration sites available for this subject
+are shown below. We quantify population clone diversity using [Gini
+coefficients](https://en.wikipedia.org/wiki/Gini_coefficient) and [Shannon
+index](https://en.wikipedia.org/wiki/Diversity_index#Shannon_index). The Gini
+coefficient provides a measure of inequality in clonal abundance in each
+sample. The coefficient equals zero when all sites are equally abundant
+(polyclonal) and increases as fewer sites account for more of the total
+(oligoclonal). Shannon index is another widely used measure of diversity and it
+accounts for both abundance and evenness of the integration events.
 
+Under most circumstances only a subset of sites will be sampled. We thus
+include an estimate of sample size based on frequency of isolation information
+from the SonicLength method [(Berry, 2012)](http://www.ncbi.nlm.nih.gov/pubmed/22238265).
+The 'S.chao1' column denotes the estimated lower bound for population size derived using Chao
+estimate [(Chao, 1987)](http://www.ncbi.nlm.nih.gov/pubmed/3427163). If sample
+replicates were present then estimates were subjected to jackknife bias
+correction.
 
 ```{r summaryTable,results="asis"}
 kable(summaryTable, caption="Sample Summary Table", row.names=FALSE, format="html", digits = 4)
@@ -68,8 +91,20 @@ colors_barplot <- colorRampPalette(brewer.pal(12, "Paired"))(length(gene_names_b
 siteColors <- structure(colors_barplot, names=gene_names_barplot)
 siteColors["LowAbund"] <- "#E0E0E0"
 
+n_timpoints_for_cell_type <- barplotAbunds %>%
+    distinct(CellType, Timepoint) %>%
+    group_by(CellType) %>%
+    summarize(TimePointCount = n())
+
+n_timpoints_for_cell_type <- mutate(
+    n_timpoints_for_cell_type, 
+    FractionTimePointCount = TimePointCount / max(TimePointCount)
+)
+
+barplotAbunds <- left_join(barplotAbunds, n_timpoints_for_cell_type, by='CellType') 
+
 ggplot(data=barplotAbunds, aes(Timepoint, estAbundProp, fill=maskedRefGeneName)) +
-  geom_bar(stat="identity") + facet_wrap(~CellType, scales="free") + scale_fill_manual(values=siteColors) +
+  geom_bar(aes(width=0.9*FractionTimePointCount), stat="identity") + facet_wrap(~CellType, scales="free") + scale_fill_manual(values=siteColors) +
   labs(y="Relative Sonic Abundance", x="Timepoint", fill="GeneNames") +
   scale_y_continuous(labels=percent)  +
   theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1))

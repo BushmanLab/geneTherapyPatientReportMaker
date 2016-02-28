@@ -48,9 +48,9 @@ Data/
 #### Code example
 - 1. `check_patient_gtsp.R`: get available datasets, generate a csv file for a patient 
 ```
- Rscript path/to/check_patient_GTSP.R                    #get all processed samples
- Rscript path/to/check_patient_GTSP.R pFR03              #get data sets for patient pFR03 and output to csv format
- Rscript path/to/check_patient_GTSP.R pFR03 > pFR03.csv  #get data sets for patient pFR03 and output to tmp.csv
+ Rscript path/to/check_patient_gtsp.R                    #get all processed samples
+ Rscript path/to/check_patient_gtsp.R pFR03              #get data sets for patient pFR03 and output to csv format
+ Rscript path/to/check_patient_gtsp.R pFR03 > pFR03.csv  #get data sets for patient pFR03 and output to tmp.csv
 ```
 
 - 2. `makeGeneTherapyPatientReport.R`: generate report for a patient from the csv file 
@@ -82,6 +82,12 @@ Metadata for GTSP is held in specimen_management DB and can be changed with `--g
 with default "specimen_management":
 ```
 Rscript path/to/makeGeneTherapyPatientReport.R  ~/Frances/run20150505  --gtsp_group gtsp_group_in_my_cnf
+```
+
+Once ref seq genes are downloaded from UCSC; data(genes and locations) are stored
+in `refSeq.rds` and this file can be used in future runs(to avoid downloading again):
+```
+Rscript path/to/makeGeneTherapyPatientReport.R  ~/Frances/run20150505  --ref_seq refSeq.rds
 ```
 
 

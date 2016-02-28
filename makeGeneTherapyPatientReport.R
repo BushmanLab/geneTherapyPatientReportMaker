@@ -12,11 +12,14 @@ set_args <- function(...) {
     parser <- ArgumentParser(description="Gene Therapy Patient Report for Single Patient")
     parser$add_argument("sample_gtsp", nargs='?', default='sampleName_GTSP.csv')
     parser$add_argument("-s", action='store_true', help="abundance by sonicLength package (Berry, C. 2012)")
-    parser$add_argument("-f", "--ref_genome", default="hg18", help="reference genome used for all samples")
+    parser$add_argument("-r", "--ref_genome", default="hg18", help="reference genome used for all samples")
     parser$add_argument("--sites_group", default="intsites_miseq.read", help="group to use for integration sites db from ~/.my.cnf")
     parser$add_argument("--gtsp_group", default="specimen_management", help="group to use for specimen management GTSP db from ~/.my.cnf")
     parser$add_argument("-d", "--data_directory", default="", help="Set filepath to data instead of using intSite db")
+    parser$add_argument("--ref_seq", help="read Ref Seq genes from file")
     parser$add_argument("--output", help='HTML and MD file names instead of Trial.Patient.Date name')
+
+>>>>>>> origin/master
     arguments <- parser$parse_args(...)
     
     ## gene files
@@ -40,7 +43,6 @@ set_args <- function(...) {
     
     return(arguments)
 }
-##set_args()
 arguments <- set_args()
 print(arguments)
 
@@ -51,6 +53,7 @@ db_group_gtsp <- arguments$gtsp_group
 ref_genome <- arguments$ref_genome
 codeDir <- arguments$codeDir
 dataDir <- arguments$data_directory
+ref_seq_filename <- arguments$ref_seq
 
 #### INPUTS: csv file/table GTSP to sampleName ####
 csvfile <- arguments$sample_gtsp
@@ -58,31 +61,18 @@ csvfile <- arguments$sample_gtsp
 if( !file.exists(csvfile) ) stop(csvfile, "not found")
 
 #### load up require packages + objects #### 
-libs <- c("RMySQL",
-          "plyr",
-          "dplyr",
-          "stringr",
-          "reshape2",
-          "scales",
-          "ggplot2",
-          "devtools",
-          "reldist",
-          "hiAnnotator",
-          "sonicLength",
-          "intSiteRetriever",
-          "BiocParallel",
-          "PubMedWordcloud",
-          "markdown",
-          "RColorBrewer",
-          "knitr")
+libs <- c("RMySQL", "plyr", "dplyr", "stringr", "reshape2",
+          "scales", "ggplot2", "devtools", "reldist",
+          "hiAnnotator", "sonicLength", "intSiteRetriever",
+          "BiocParallel", "PubMedWordcloud", "markdown",
+          "RColorBrewer", "magrittr", "knitr")
 null <- suppressMessages(sapply(libs, library, character.only=TRUE))
 
-source(file.path(codeDir, "utilities.R"))
-source(file.path(codeDir, "specimen_management.R"))
-source(file.path(codeDir, "estimatedAbundance.R"))
-source(file.path(codeDir, "read_site_totals.R"))
-source(file.path(codeDir, "populationInfo.R"))
-source(file.path(codeDir, "abundanceFilteringUtils.R"))
+R_source_files <- c("utilities.R", "specimen_management.R", 
+    "estimatedAbundance.R", "read_site_totals.R", "ref_seq.R",
+    "populationInfo.R", "abundanceFilteringUtils.R")
+
+null <- sapply(R_source_files, function(x) source(file.path(codeDir, x)))
 
 url <- "https://raw.githubusercontent.com/BushmanLab/intSiteCaller/master/"
 source_url(paste0(url, "hiReadsProcessor.R"))
@@ -266,10 +256,8 @@ timepointPopulationInfo$UniqueSites <- sapply(split(standardizedDereplicatedSite
 #=======================ANNOTATE DEREPLICATED SITES==========================
 #standard refSeq genes
 message("Annotating unique hit sites")
-refSeq_genes <- makeGRanges(
-  getUCSCtable("refGene", "RefSeq Genes", freeze=freeze),
-  freeze=freeze
-)
+refSeq_genes <- read_ref_seq(ref_seq_filename)
+
 save.image(RDataFile)
 
 standardizedDereplicatedSites <- getNearestFeature(standardizedDereplicatedSites,
@@ -289,7 +277,7 @@ standardizedDereplicatedSites <- getSitesInFeature(standardizedDereplicatedSites
                                                    feature.colnam="name2")
 
 #oncogenes
-oncogenes <- scan(file= file.path(codeDir, arguments$oncoGeneFile), what='charactor')
+oncogenes <- scan(file= file.path(codeDir, arguments$oncoGeneFile), what='character')
 oncogenes <- oncogenes[!grepl("geneName", oncogenes, ignore.case=TRUE)]
 
 refSeq_oncogene <- refSeq_genes[toupper(refSeq_genes$name2) %in% toupper(oncogenes)]
@@ -400,21 +388,11 @@ badActorData <- lapply(badActorData, function(x){
 #==================SET VARIABLES FOR MARKDOWN REPORT=====================
 timepoint <- levels(sets$Timepoint)
 
-cols <- c("Trial", "GTSP", "Patient", "Timepoint", "CellType", 
-          "TotalReads", "InferredCells", "UniqueSites", "FragMethod", "VCN")
-summaryTable <- arrange(sets,Timepoint,CellType)
-summaryTable <- summaryTable[,cols]
-
-##cols <- c("Patient", "Timepoint", "CellType", "UniqueSites",
-##          "Replicates", "FragMethod", "VCN", "S.chao1", "Gini", "Shannon")
-cols <- c("Patient", "Timepoint", "CellType", "InferredCells", "UniqueSites",
-          "Replicates", "FragMethod", "VCN", "Gini", "Shannon")
 popSummaryTable <- merge(sets,  populationInfo, by.x="GTSP", by.y="group")
 popSummaryTable <- arrange(popSummaryTable,Timepoint,CellType)
-##popSummaryTable <- popSummaryTable[,cols]
 
 cols <- c("Trial", "GTSP", "Replicates", "Patient", "Timepoint", "CellType", 
-          "TotalReads", "InferredCells", "UniqueSites", "FragMethod", "VCN", "Gini", "Shannon")
+          "TotalReads", "InferredCells", "UniqueSites", "FragMethod", "VCN", "S.chao1", "Gini", "Shannon")
 summaryTable <- popSummaryTable[,cols]
 
 summaryTable$VCN <- ifelse(summaryTable$VCN == 0, NA, summaryTable$VCN)

@@ -46,7 +46,7 @@ getPopulationInfo <- function(replicated, dereplicated, splitBy){
     dereplicatedSites <- dereplicated[[name]]
     
     data.frame("group"=name,
-               ##"S.chao1"=calculateChao(replicatedSites, dereplicatedSites), 
+               "S.chao1"=calculateChao(replicatedSites, dereplicatedSites), 
                "Gini"=calculateGini(dereplicatedSites),
                "Shannon"=calculateShannon(dereplicatedSites))
   })
