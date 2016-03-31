@@ -1,40 +1,52 @@
 library("methods", quietly=TRUE)
 library("RMySQL", quietly = TRUE) #also loads DBI
 
-group <- "hiv_specimen.database"
+specimen_group <- "hiv_specimen.database"
+intsites_group <- "hiv_intsites.database"
 
 junk <- sapply(dbListConnections(MySQL()), dbDisconnect)
-dbConn <- dbConnect(MySQL(), group=group)
+dbConn1 <- dbConnect(MySQL(), group = specimen_group)
+dbConn2 <- dbConnect(MySQL(), group = intsites_group)
 
 sql <- "select trial, patient, cellType, timepoint, parentAlias from hivsp"
-##message(sql)
-trial_pat_gtsp <- dbGetQuery(dbConn,sql)
-names(trial_pat_alias) <- tolower(names(trial_pat_alias))
+specimens <- dbGetQuery(dbConn1, sql)
+#names(specimens) <- tolower(names(specimens))
+
+sql <- "select parentAlias, childAlias, uniqRegion, primerType from hivsam"
+samples <- dbGetQuery(dbConn1, sql)
+#names(samples) <- tolower(names(samples))
 
 sql <- "select sampleName, refGenome, gender from samples"
-##message(sql)
-set_ref_gen <- dbGetQuery(dbConn,sql)
-names(set_ref_gen) <- tolower(names(set_ref_gen))
-set_ref_gen$gtsp <- sub("-\\d+$", "", set_ref_gen$samplename)
+intsites <- dbGetQuery(dbConn2,sql)
+#names(intsites) <- tolower(names(intsites))
+#set_ref_gen$gtsp <- sub("-\\d+$", "", set_ref_gen$samplename)
 
-merged.tab <- merge(trial_pat_gtsp, set_ref_gen,
-                    by.x="specimenaccnum", by.y="gtsp")
+junk <- sapply(dbListConnections(MySQL()), dbDisconnect)
 
-merged.tab <- plyr:::arrange(merged.tab, trial, patient, specimenaccnum, samplename, refgenome, gender)
+sp_sam <- merge(specimens, samples, by = "parentAlias")
+sp_sam_int <- merge(sp_sam, intsites, by.x = "childAlias", by.y = "sampleName")
 
-merged.tab <- subset(merged.tab, select=c("trial", "patient", "celltype", "timepoint", "specimenaccnum", "samplename", "refgenome", "gender"))
+sp_sam_int$GTSP <- paste0(sp_sam_int$parentAlias, "-", sp_sam_int$primerType, sp_sam_int$uniqRegion)
+sp_sam_int$cellType <- paste0(sp_sam_int$cellType, ":", sp_sam_int$primerType, sp_sam_int$uniqRegion)
+
+#merged.tab <- merge(trial_pat_gtsp, set_ref_gen,
+#                    by.x="specimenaccnum", by.y="gtsp")
+
+#merged.tab <- plyr:::arrange(merged.tab, trial, patient, specimenaccnum, samplename, refgenome, gender)
+
+#merged.tab <- subset(merged.tab, select=c("trial", "patient", "celltype", "timepoint", "specimenaccnum", "samplename", "refgenome", "gender"))
 
 ##message()
 
 pat <- commandArgs(trailingOnly=TRUE)[1]
-if( is.na(pat) | !(pat %in% merged.tab$patient) ) {
-    write.table(merged.tab, "", sep = "\t", row.names=FALSE, quote=FALSE)
+if( is.na(pat) | !(pat %in% sp_sam_int$patient) ) {
+    write.table(sp_sam_int, "", sep = "\t", row.names=FALSE, quote=FALSE)
     if( is.na(pat) ) q()
-    if( !(pat %in% merged.tab$patient) ) stop(pat, " patient not found in the above table")
+    if( !(pat %in% sp_sam_int$patient) ) stop(pat, " patient not found in the above table")
 }
 
-df <- subset(merged.tab, patient==pat, select=c("samplename", "specimenaccnum", "patient", "celltype", "timepoint"))
-colnames(df) <- c("sampleName", "GTSP", "patient", "celltype", "timepoint")
+df <- sp_sam_int[sp_sam_int$patient == pat, c("childAlias", "GTSP", "patient", "cellType", "timepoint")]
+names(df) <- c("sampleName", "GTSP", "patient", "celltype", "timepoint")
 
 write.csv(df, file="", row.names=FALSE, quote=FALSE)
 q()

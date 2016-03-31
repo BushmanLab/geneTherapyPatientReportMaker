@@ -12,13 +12,13 @@ get_metadata_for_GTSP <- function(GTSP, db_group) {
     query_condition <- paste0("WHERE parentAlias = '", string, "'")  
     query_sets <- paste(query_selection, query_condition)
 
-    query_selection <- "SELECT parentAlias,childAlias,prepMethod FROM hivsam"
+    query_selection <- "SELECT parentAlias,childAlias,prepMethod,uniqRegion,primerType FROM hivsam"
     string <- paste(GTSP, collapse = "%' OR childAlias LIKE '")
     query_condition <- paste0("WHERE childAlias LIKE '", string, "%'")
     query_samples <- paste(query_selection, query_condition)
         
     #GTSP = paste0("^", GTSP, "$", collapse="|")
-    
+    junk <- sapply(dbListConnections(MySQL()), dbDisconnect)
     GTSPDBconn <- dbConnect(MySQL(), group=db_group)
     
     #query = paste0("SELECT Trial, SpecimenAccNum, Patient, Timepoint, CellType,
@@ -30,16 +30,15 @@ get_metadata_for_GTSP <- function(GTSP, db_group) {
     sets <- dbGetQuery(GTSPDBconn, query_sets)
     samples <- dbGetQuery(GTSPDBconn, query_samples)
     
-    dbDisconnect(GTSPDBconn)
+    junk <- sapply(dbListConnections(MySQL()), dbDisconnect)
     
     sets <- sets[,c("trial", "parentAlias", "patient", "timepoint", "cellType", "vcn")]
     
-    samples$GTSP <- mapply(paste0, sapply(strsplit(samples$childAlias, split = "-"), "[[", 1),
-                           rep("-", nrow(samples)),
-                           sapply(strsplit(samples$childAlias, split = "-"), "[[", 2))
-    samples <- unique(samples[,c("parentAlias", "GTSP", "prepMethod")])
+    samples$GTSP <- paste0(samples$parentAlias, "-", samples$primerType, samples$uniqRegion)
+    samples <- unique(samples[, c("parentAlias", "prepMethod", "uniqRegion", "primerType", "GTSP")])
     
-    sets <- left_join(samples, sets, by = "parentAlias")
+    sets <- merge(samples, sets, by = "parentAlias")
+    sets$cellType <- paste0(sets$cellType, ":", sets$primerType, sets$uniqRegion)
     sets <- sets[, c("trial", "GTSP", "patient", "timepoint", "cellType", "prepMethod", "vcn")]
     names(sets) <- c("Trial", "GTSP", "Patient", "Timepoint", "CellType", "FragMethod", "VCN")
     sets    
