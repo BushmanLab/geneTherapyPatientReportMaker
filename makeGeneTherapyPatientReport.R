@@ -80,6 +80,9 @@ message("\nReading csv from ", csvfile)
 sampleName_GTSP <- read.csv(csvfile)
 stopifnot(all(c("sampleName", "GTSP") %in% colnames(sampleName_GTSP)))
 sampleName_GTSP$refGenome <- ref_genome
+prepMethod <- sapply(strsplit(sampleName_GTSP$GTSP, split = "-"), "[[", 2)
+sampleName_GTSP$celltype <- paste0(sampleName_GTSP$celltype, ":", prepMethod)
+
 message("\nGenerating report from the following sets")
 print(sampleName_GTSP)
 

@@ -1,15 +1,15 @@
 library("methods", quietly=TRUE)
 library("RMySQL", quietly = TRUE) #also loads DBI
 
-group <- "intsites_miseq.read"
+group <- "hiv_specimen.database"
 
 junk <- sapply(dbListConnections(MySQL()), dbDisconnect)
 dbConn <- dbConnect(MySQL(), group=group)
 
-sql <- "select trial, patient, CellType, Timepoint, SpecimenAccNum from specimen_management.gtsp"
+sql <- "select trial, patient, cellType, timepoint, parentAlias from hivsp"
 ##message(sql)
 trial_pat_gtsp <- dbGetQuery(dbConn,sql)
-names(trial_pat_gtsp) <- tolower(names(trial_pat_gtsp))
+names(trial_pat_alias) <- tolower(names(trial_pat_alias))
 
 sql <- "select sampleName, refGenome, gender from samples"
 ##message(sql)
