@@ -13,9 +13,10 @@ set_args <- function(...) {
     parser$add_argument("sample_gtsp", nargs='?', default='sampleName_GTSP.csv')
     parser$add_argument("-s", action='store_true', help="abundance by sonicLength package (Berry, C. 2012)")
     parser$add_argument("-r", "--ref_genome", default="hg18", help="reference genome used for all samples")
-    parser$add_argument("--sites_group", default="intsites_miseq.read", help="group to use for integration sites db from ~/.my.cnf")
-    parser$add_argument("--gtsp_group", default="specimen_management", help="group to use for specimen management GTSP db from ~/.my.cnf")
+    parser$add_argument("--sites_group", default="hiv_intsites.database", help="group to use for integration sites db from ~/.my.cnf")
+    parser$add_argument("--gtsp_group", default="hiv_specimen.database", help="group to use for specimen management GTSP db from ~/.my.cnf")
     parser$add_argument("--ref_seq", help="read Ref Seq genes from file")
+    parser$add_argument("--ignore_sites", default="empty", help="sites to ignore from analysis")
     parser$add_argument("-o", "--output", help='HTML and MD file names instead of Trial.Patient.Date name')
 
     arguments <- parser$parse_args(...)
@@ -51,9 +52,12 @@ db_group_gtsp <- arguments$gtsp_group
 ref_genome <- arguments$ref_genome
 codeDir <- arguments$codeDir
 ref_seq_filename <- arguments$ref_seq
+ignore_sites <- arguments$ignore_sites
 
 #### INPUTS: csv file/table GTSP to sampleName ####
 csvfile <- arguments$sample_gtsp
+
+ignore_sites <- if(!ignore_sites == "empty"){read.delim(file = ignore_sites, header = FALSE)}
 
 if( !file.exists(csvfile) ) stop(csvfile, "not found")
 
@@ -159,6 +163,11 @@ if(length(isthere) > 0){suppressMessages(library("dplyr"))}
 standardizedReplicatedSites$posid <- paste0(seqnames(standardizedReplicatedSites),
                                             strand(standardizedReplicatedSites),
                                             start(flank(standardizedReplicatedSites, -1, start=T)))
+
+if( !is.null(ignore_sites) ){
+  standardizedReplicatedSites <- standardizedReplicatedSites[!standardizedReplicatedSites$posid %in% ignore_sites[,1]]
+}
+
 standardizedReplicatedSites <- split(standardizedReplicatedSites,
                                      standardizedReplicatedSites$GTSP)
 standardizedReplicatedSites <- lapply(standardizedReplicatedSites, function(x){
