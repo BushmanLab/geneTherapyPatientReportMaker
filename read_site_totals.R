@@ -24,3 +24,18 @@ get_count_per_GTSP <- function(sampleName_GTSP, database_function, column_name, 
     sample_count_GTSP <- merge(sample_count, sampleName_GTSP)
     aggregate(sample_count_GTSP[column_name], sample_count_GTSP['GTSP'], FUN=sum)
 }
+
+get_data_totals <- function(sampleName_GTSP, uniqueSites, multihitSites){
+    uniqueReads <- sapply(uniqueSites, function(sites){length(unique(names(sites)))})
+    multihitReads <- sapply(multihitSites, function(multihits){
+	reads <- length(unique(names(multihits)))
+	reads
+    })
+    readTotals <- data.frame( 
+	"sampleName" = sampleName_GTSP$sampleName,
+	"refGenome" = ref_genome,
+	"TotalReads" = uniqueReads + multihitReads
+    )
+    sample_count_GTSP <- merge(readTotals, sampleName_GTSP)
+    aggregate(sample_count_GTSP["TotalReads"], sample_count_GTSP["GTSP"], FUN=sum)
+}

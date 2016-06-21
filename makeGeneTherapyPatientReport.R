@@ -15,8 +15,9 @@ set_args <- function(...) {
     parser$add_argument("-r", "--ref_genome", default="hg18", help="reference genome used for all samples")
     parser$add_argument("--sites_group", default="intsites_miseq.read", help="group to use for integration sites db from ~/.my.cnf")
     parser$add_argument("--gtsp_group", default="specimen_management", help="group to use for specimen management GTSP db from ~/.my.cnf")
+    parser$add_argument("-d", "--data_directory", default="", help="Set filepath to data instead of using intSite db")
     parser$add_argument("--ref_seq", help="read Ref Seq genes from file")
-    parser$add_argument("-o", "--output", help='HTML and MD file names instead of Trial.Patient.Date name')
+    parser$add_argument("--output", help='HTML and MD file names instead of Trial.Patient.Date name')
 
     arguments <- parser$parse_args(...)
     
@@ -50,6 +51,7 @@ db_group_sites <- arguments$sites_group
 db_group_gtsp <- arguments$gtsp_group
 ref_genome <- arguments$ref_genome
 codeDir <- arguments$codeDir
+dataDir <- arguments$data_directory
 ref_seq_filename <- arguments$ref_seq
 
 #### INPUTS: csv file/table GTSP to sampleName ####
@@ -83,23 +85,54 @@ sampleName_GTSP$refGenome <- ref_genome
 message("\nGenerating report from the following sets")
 print(sampleName_GTSP)
 
-dbConn <- dbConnect(MySQL(), group=db_group_sites)
-info <- dbGetInfo(dbConn)
-dbConn <- src_sql("mysql", dbConn, info = info)
+##Load data if not using intSites database##
+if( length(dataDir)>0 ){    
+    sampleDir <- paste0(dataDir, sampleName_GTSP$sampleName)
+    uniqueSamples <- lapply(sampleDir, function(path){
+        load(paste0(path, "/allSites.RData"))
+        allSites
+    })
+    names(uniqueSamples) <- sampleName_GTSP$sampleName
 
-if( !all(setNameExists(sampleName_GTSP, dbConn)) ) {
-    sampleNameIn <- paste(sprintf("'%s'", sampleName_GTSP$sampleName),
-                          collapse=",")
-    q <- sprintf("SELECT * FROM samples WHERE sampleName IN (%s)", sampleNameIn)
-    message("\nChecking database:\n",q,"\n")
-    write.table(tbl(dbConn, sql(q)), quote=FALSE, row.name=FALSE)
-    message()
-    stop("Was --ref_genome specified correctly or did query return all entries")
-} else {
-    message("All samples are in DB.")
+    multihitReads <- lapply(sampleDir, function(path){
+        load(paste0(path, "/multihitData.RData"))
+        names(multihitData$unclusteredMultihits)
+    })
+    names(multihitReads) <- sampleName_GTSP$sampleName
+
+    multihitSamples <- lapply(sampleDir, function(path){
+        load(paste0(path, "/multihitData.RData"))
+        multihitData$clusteredMultihitPositions
+    })
+    names(multihitSamples) <- sampleName_GTSP$sampleName
+
+    read_sites_sample_GTSP <- get_data_totals(sampleName_GTSP, uniqueSamples, multihitReads)
+
+    #### Join samples to make uniqueSites.gr and sites.multi ####
+    uniqueSamples <- do.call(c, lapply(1:length(uniqueSamples), function(i){uniqueSamples[[i]]}))
+    
+    uniqueSites.gr <- granges(uniqueSamples)
+    uniqueSites.gr$sampleName <- uniqueSamples$sampleName
+    mcols(uniqueSites.gr) <- merge(mcols(uniqueSites.gr), sampleName_GTSP, by = "sampleName")
 }
 
-read_sites_sample_GTSP <- get_read_site_totals(sampleName_GTSP, dbConn)
+if( !length(dataDir)>0 ){
+    dbConn <- dbConnect(MySQL(), group=db_group_sites)
+    info <- dbGetInfo(dbConn)
+    dbConn <- src_sql("mysql", dbConn, info = info)
+
+    if( !all(setNameExists(sampleName_GTSP, dbConn)) ) {
+        sampleNameIn <- paste(sprintf("'%s'", sampleName_GTSP$sampleName),
+                              collapse=",")
+        q <- sprintf("SELECT * FROM samples WHERE sampleName IN (%s)", sampleNameIn)
+        message("\nChecking database:\n",q,"\n")
+        write.table(tbl(dbConn, sql(q)), quote=FALSE, row.name=FALSE)
+        message()
+        stop("Was --ref_genome specified correctly or did query return all entries")
+    }
+
+    read_sites_sample_GTSP <- get_read_site_totals(sampleName_GTSP, dbConn)
+}
 
 sets <- get_metadata_for_GTSP(unique(sampleName_GTSP$GTSP), db_group_gtsp)
 
@@ -133,19 +166,21 @@ stopifnot(length(unique(sampleName_GTSP$refGenome))==1)
 freeze <- sampleName_GTSP[1, "refGenome"]
 
 ##==========GET AND PERFORM BASIC DEREPLICATION/SONICABUND ON SITES=============
-message("Fetching unique sites and estimating abundance")
-dbConn <- dbConnect(MySQL(), group=db_group_sites)
-info <- dbGetInfo(dbConn)
-dbConn <- src_sql("mysql", dbConn, info = info)
-sites <- merge(getUniquePCRbreaks(sampleName_GTSP, dbConn), sampleName_GTSP)
-names(sites)[names(sites)=="position"] <- "integration"
+if( !length(dataDir)>0 ){
+    message("Fetching unique sites and estimating abundance")
+    dbConn <- dbConnect(MySQL(), group=db_group_sites)
+    info <- dbGetInfo(dbConn)
+    dbConn <- src_sql("mysql", dbConn, info = info)
+    sites <- merge(getUniquePCRbreaks(sampleName_GTSP, dbConn), sampleName_GTSP)
+    names(sites)[names(sites)=="position"] <- "integration"
 
-#we really don't care about seqinfo - we just want a GRange object for easy manipulation
-uniqueSites.gr <- GRanges(seqnames=Rle(sites$chr),
-                          ranges=IRanges(start=pmin(sites$integration, sites$breakpoint),
-                                         end=pmax(sites$integration, sites$breakpoint)),
-                          strand=Rle(sites$strand))
-mcols(uniqueSites.gr) <- sites[,c("sampleName", "GTSP")]
+    #we really don't care about seqinfo - we just want a GRange object for easy manipulation
+    uniqueSites.gr <- GRanges(seqnames=Rle(sites$chr),
+                              ranges=IRanges(start=pmin(sites$integration, sites$breakpoint),
+                                             end=pmax(sites$integration, sites$breakpoint)),
+                              strand=Rle(sites$strand))
+    mcols(uniqueSites.gr) <- sites[,c("sampleName", "GTSP")]
+}
 
 #standardize sites across all GTSPs
 isthere <- which("dplyr" == loadedNamespaces()) # temp work around  of
@@ -364,11 +399,36 @@ summaryTable$VCN <- ifelse(summaryTable$VCN == 0, NA, summaryTable$VCN)
 timepointPopulationInfo <- melt(timepointPopulationInfo, "group")
 
 #==================Get abundance for multihit events=====================
-message("Fetching multihit sites and estimating abundance")
-dbConn <- dbConnect(MySQL(), group=db_group_sites)
-info <- dbGetInfo(dbConn)
-dbConn <- src_sql("mysql", dbConn, info = info)
-sites.multi <- merge( suppressWarnings(getMultihitLengths(sampleName_GTSP, dbConn)), sampleName_GTSP)
+if( length(dataDir)>0 ){
+    sites.multi <- do.call(rbind, lapply(1:length(multihitSamples), function(i){
+	multihits <- multihitSamples[[i]]
+	if( length(multihits)>0 ){    
+	    multihits <- do.call(rbind, lapply(1:length(multihits), function(j){
+	        cluster.gr <- multihits[[j]]
+	        sampleName <- names(multihitSamples[i])
+ 	        cluster.df <- data.frame(
+		    "posID" = paste0(seqnames(cluster.gr), strand(cluster.gr), 
+		    	      ifelse(strand(cluster.gr) == "+", start(cluster.gr), end(cluster.gr))),
+		    "multihitID" = rep(paste0(i, "_", j), length(cluster.gr)),
+		    "sampleName" = rep(sampleName, length(cluster.gr)),
+	            "length" = width(cluster.gr),
+	    	    "GTSP" = rep(strsplit(sampleName, "-")[[1]][1], length(cluster.gr))
+	        )
+	        cluster.df
+	    }))
+	}else{
+	    multihits <- data.frame()
+	}
+	multihits
+    }))
+    row.names(sites.multi) <- NULL
+}else{
+    message("Fetching multihit sites and estimating abundance")
+    dbConn <- dbConnect(MySQL(), group=db_group_sites)
+    info <- dbGetInfo(dbConn)
+    dbConn <- src_sql("mysql", dbConn, info = info)
+    sites.multi <- merge( suppressWarnings(getMultihitLengths(sampleName_GTSP, dbConn)), sampleName_GTSP)
+}
 
 if( nrow(sites.multi) > 0 ) {
     sites.multi <- (sites.multi %>%
