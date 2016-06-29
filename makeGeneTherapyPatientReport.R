@@ -1,4 +1,6 @@
-options(stringsAsFactors = FALSE)
+library(DBI, quietly=TRUE, verbose=FALSE)
+library(yaml, quietly=TRUE, verbose=FALSE)
+options(stringsAsFactors = FALSE, useFancyQuotes=FALSE)
 
 #' set all argumentgs for the script
 #' @return list of argumentgs
@@ -11,6 +13,7 @@ set_args <- function(...) {
     suppressMessages(library(argparse))
     parser <- ArgumentParser(description="Gene Therapy Patient Report for Single Patient")
     parser$add_argument("sample_gtsp", nargs='?', default='sampleName_GTSP.csv')
+    parser$add_argument("-c", default="./INSPIIRED.yml", help="path to INSPIIRED configuration file.")
     parser$add_argument("-s", action='store_true', help="abundance by sonicLength package (Berry, C. 2012)")
     parser$add_argument("-r", "--ref_genome", default="hg18", help="reference genome used for all samples")
     parser$add_argument("--sites_group", default="intsites_miseq.read", help="group to use for integration sites db from ~/.my.cnf")
@@ -19,7 +22,7 @@ set_args <- function(...) {
     parser$add_argument("-o", "--output", help='HTML and MD file names instead of Trial.Patient.Date name')
 
     arguments <- parser$parse_args(...)
-    
+
     ## gene files
     arguments$oncoGeneFile <- ""
     if(grepl("^hg", arguments$ref_genome)) arguments$oncoGeneFile <- "allonco_no_pipes.csv"
@@ -44,6 +47,12 @@ set_args <- function(...) {
 arguments <- set_args()
 print(arguments)
 
+arguments$gtsp_group
+# Load configuration file
+if (!file.exists(arguments$c)) stop("the configuration file can not be found.")
+config <<- yaml.load_file(arguments$c)
+
+
 ## defaults:
 use.sonicLength <-  ! arguments$s
 db_group_sites <- arguments$sites_group
@@ -65,9 +74,8 @@ libs <- c("RMySQL", "plyr", "dplyr", "stringr", "reshape2",
           "RColorBrewer", "magrittr", "knitr")
 null <- suppressMessages(sapply(libs, library, character.only=TRUE))
 
-R_source_files <- c("utilities.R", "specimen_management.R", 
-    "estimatedAbundance.R", "read_site_totals.R", "ref_seq.R",
-    "populationInfo.R", "abundanceFilteringUtils.R")
+R_source_files <- c("utilities.R", "estimatedAbundance.R", "read_site_totals.R", "ref_seq.R",
+                    "populationInfo.R", "abundanceFilteringUtils.R")
 
 null <- sapply(R_source_files, function(x) source(file.path(codeDir, x)))
 
@@ -83,23 +91,59 @@ sampleName_GTSP$refGenome <- ref_genome
 message("\nGenerating report from the following sets")
 print(sampleName_GTSP)
 
-dbConn <- dbConnect(MySQL(), group=db_group_sites)
-info <- dbGetInfo(dbConn)
-dbConn <- src_sql("mysql", dbConn, info = info)
+# Connect to my database
+if (config$dataBase == 'mysql'){
+   stopifnot(file.exists("~/.my.cnf"))
+   stopifnot(file.info("~/.my.cnf")$mode == as.octmode("600"))
+   dbConn <- dbConnect(MySQL(), group=config$mysqlConnectionGroup)
+   info <- dbGetInfo(dbConn)
+   dbConn <- src_sql("mysql", dbConn, info = info)
+}else if (config$dataBase == 'sqlite') {
+   dbConn <- dbConnect(RSQLite::SQLite(), dbname=config$sqliteIntSitesDB)
+   info <- dbGetInfo(dbConn)
+   dbConn <- src_sql("sqlite", dbConn, info = info)
+} else { stop('Can not establish a connection to the database') }
 
 if( !all(setNameExists(sampleName_GTSP, dbConn)) ) {
     sampleNameIn <- paste(sprintf("'%s'", sampleName_GTSP$sampleName),
                           collapse=",")
     q <- sprintf("SELECT * FROM samples WHERE sampleName IN (%s)", sampleNameIn)
     message("\nChecking database:\n",q,"\n")
-    write.table(tbl(dbConn, sql(q)), quote=FALSE, row.name=FALSE)
+
+
+    ### write.table(tbl(dbConn, sql(q)), quote=FALSE, row.name=FALSE)
+    t <- dbSendQuery(con, q)
+    write.table(t)
+
     message()
     stop("Was --ref_genome specified correctly or did query return all entries")
-} else {
+   } else {
     message("All samples are in DB.")
 }
 
 read_sites_sample_GTSP <- get_read_site_totals(sampleName_GTSP, dbConn)
+
+get_metadata_for_GTSP <- function(GTSP, db_group) {
+    stopifnot(length(GTSP) == length(unique(GTSP)))
+
+    GTSP = paste(sQuote(GTSP), collapse=',')
+    
+    if (config$dataBase == 'mysql'){
+      GTSPDBconn <- dbConnect(MySQL(), group=config$mysqlSpecimenManagementGroup)
+    }else if (config$dataBase == 'sqlite') {
+      GTSPDBconn <- dbConnect(RSQLite::SQLite(), dbname=config$sqliteSampleManagement)
+    } else { stop('Can not establish a connection to the database') }
+
+    query = paste0("SELECT Trial, SpecimenAccNum, Patient, Timepoint, CellType, SamplePrepMethod, VCN
+                   FROM gtsp
+                   WHERE SpecimenAccNum in (", GTSP, ");");
+    
+    sets <- dbGetQuery(GTSPDBconn, query)
+    dbDisconnect(GTSPDBconn)
+
+    names(sets) <- c("Trial", "GTSP", "Patient", "Timepoint", "CellType", "FragMethod", "VCN")
+    sets
+}
 
 sets <- get_metadata_for_GTSP(unique(sampleName_GTSP$GTSP), db_group_gtsp)
 
@@ -118,10 +162,12 @@ patient <- sets$Patient[1]
 stopifnot(length(unique(sets$Trial)) == 1)
 trial <- sets$Trial[1]
 
+
 RDataFile <- paste(trial, patient, format(Sys.Date(), format="%Y%m%d"), "RData", sep=".")
 
 # all GTSP in the database
 stopifnot(nrow(sets) == length(unique(sampleName_GTSP$GTSP)))
+
 
 ##end INPUTS
 
@@ -134,9 +180,8 @@ freeze <- sampleName_GTSP[1, "refGenome"]
 
 ##==========GET AND PERFORM BASIC DEREPLICATION/SONICABUND ON SITES=============
 message("Fetching unique sites and estimating abundance")
-dbConn <- dbConnect(MySQL(), group=db_group_sites)
-info <- dbGetInfo(dbConn)
-dbConn <- src_sql("mysql", dbConn, info = info)
+
+
 sites <- merge(getUniquePCRbreaks(sampleName_GTSP, dbConn), sampleName_GTSP)
 names(sites)[names(sites)=="position"] <- "integration"
 
@@ -384,9 +429,7 @@ timepointPopulationInfo <- melt(timepointPopulationInfo, "group")
 
 #==================Get abundance for multihit events=====================
 message("Fetching multihit sites and estimating abundance")
-dbConn <- dbConnect(MySQL(), group=db_group_sites)
-info <- dbGetInfo(dbConn)
-dbConn <- src_sql("mysql", dbConn, info = info)
+
 sites.multi <- merge( suppressWarnings(getMultihitLengths(sampleName_GTSP, dbConn)), sampleName_GTSP)
 
 if( nrow(sites.multi) > 0 ) {
