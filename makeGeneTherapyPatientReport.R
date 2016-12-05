@@ -16,6 +16,7 @@ set_args <- function(...) {
     parser$add_argument("--sites_group", default="intsites_miseq.read", help="group to use for integration sites db from ~/.my.cnf")
     parser$add_argument("--gtsp_group", default="specimen_management", help="group to use for specimen management GTSP db from ~/.my.cnf")
     parser$add_argument("-d", "--data_directory", default="", help="Set filepath to data instead of using intSite db")
+    parser$add_argument("-i", "--specimen_info", default="", help="Set filepath to specimen infomation instead of using specimen management database")
     parser$add_argument("--ref_seq", help="read Ref Seq genes from file")
     parser$add_argument("--output", help='HTML and MD file names instead of Trial.Patient.Date name')
 
@@ -52,6 +53,7 @@ db_group_gtsp <- arguments$gtsp_group
 ref_genome <- arguments$ref_genome
 codeDir <- arguments$codeDir
 dataDir <- arguments$data_directory
+infoPath <- arguments$specimen_info
 ref_seq_filename <- arguments$ref_seq
 
 #### INPUTS: csv file/table GTSP to sampleName ####
@@ -89,20 +91,37 @@ print(sampleName_GTSP)
 if( length(dataDir)>0 ){    
     sampleDir <- paste0(dataDir, sampleName_GTSP$sampleName)
     uniqueSamples <- lapply(sampleDir, function(path){
-        load(paste0(path, "/allSites.RData"))
+        uniq_file <- file.path(path, "allSites.RData")
+        if( file.exists(uniq_file) ){
+          load(uniq_file)
+        }else{
+          allSites <- GRanges()
+        }
         allSites
     })
     names(uniqueSamples) <- sampleName_GTSP$sampleName
 
     multihitReads <- lapply(sampleDir, function(path){
-        load(paste0(path, "/multihitData.RData"))
-        names(multihitData$unclusteredMultihits)
+        multi_reads_file <- file.path(path, "multihitData.RData")
+        if( file.exists(multi_reads_file) ){
+          load(multi_reads_file)         
+          reads <- names(multihitData$unclusteredMultihits)
+        }else{
+          reads <- c()
+        }
+        reads
     })
     names(multihitReads) <- sampleName_GTSP$sampleName
 
     multihitSamples <- lapply(sampleDir, function(path){
-        load(paste0(path, "/multihitData.RData"))
-        multihitData$clusteredMultihitPositions
+        multi_file <- file.path(path, "multihitData.RData")
+        if( file.exists(multi_file) ){
+          load(multi_file)
+          multihit_positions <- multihitData$clusteredMultihitPositions
+        }else{
+          multihit_positions <- GRanges()
+        }
+        multihit_positions
     })
     names(multihitSamples) <- sampleName_GTSP$sampleName
 
@@ -134,7 +153,11 @@ if( !length(dataDir)>0 ){
     read_sites_sample_GTSP <- get_read_site_totals(sampleName_GTSP, dbConn)
 }
 
-sets <- get_metadata_for_GTSP(unique(sampleName_GTSP$GTSP), db_group_gtsp)
+if( !length(infoPath)>0 ){
+  sets <- get_metadata_for_GTSP(unique(sampleName_GTSP$GTSP), db_group_gtsp)
+}else{
+  sets <- read.csv(infoPath, header = TRUE)
+}
 
 ## some clean up for typos, dates, spaces etc
 sets[sets$Timepoint=="NULL", "Timepoint"] <- "d0"
