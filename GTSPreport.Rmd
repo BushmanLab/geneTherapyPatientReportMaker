@@ -3,20 +3,26 @@
 `r format(Sys.Date(), "%b %d %Y")`
 
 ```{r setup,echo=FALSE}
-library(knitr)
+libs <- c("knitr", "RColorBrewer", "grid", "gridExtra")
+null <- suppressMessages(sapply(libs, library, character.only=TRUE))
 opts_chunk$set(
-  fig.path=paste0(fig.path, "/"), 
-  fig.align='left', 
+  fig.path=paste0(fig.path, "/"),
+  fig.align='left',
   comment="",
-  echo=FALSE, 
-  warning=FALSE, 
-  error=TRUE, 
-  message=FALSE, 
-  cache=FALSE, 
+  echo=FALSE,
+  warning=FALSE,
+  error=TRUE,
+  message=FALSE,
+  cache=FALSE,
   dpi=100,
   dev=c("png","pdf","postscript"),
     results="asis")
 options(knitr.table.format = 'html')
+
+n_cell_types <- barplotAbunds %>%
+  select(CellType) %>%
+  distinct(CellType) %>%
+  nrow(.)
 ```
 
 ***
@@ -30,18 +36,21 @@ cells sequentially from blood to monitor cell populations. Frequency of
 isolation information can provide information on the clonal structure of the
 population. This report summarizes results for subject `r sanitize(patient)`
 over time points `r sanitize(paste(timepoint,collapse=", "))` in UCSC genome
-draft `r sanitize(freeze)`. 
+draft `r sanitize(freeze)`.
 
 The samples studied in this report, the numbers of sequence reads, recovered
 integration vectors, and unique integration sites available for this subject
 are shown below. We quantify population clone diversity using [Gini
-coefficients](https://en.wikipedia.org/wiki/Gini_coefficient) and [Shannon
-index](https://en.wikipedia.org/wiki/Diversity_index#Shannon_index). The Gini
+coefficients](https://en.wikipedia.org/wiki/Gini_coefficient), [Shannon
+index](https://en.wikipedia.org/wiki/Diversity_index#Shannon_index), and UC50. The Gini
 coefficient provides a measure of inequality in clonal abundance in each
 sample. The coefficient equals zero when all sites are equally abundant
 (polyclonal) and increases as fewer sites account for more of the total
 (oligoclonal). Shannon index is another widely used measure of diversity and it
-accounts for both abundance and evenness of the integration events.
+accounts for both abundance and evenness of the integration events. Alternatively, the
+UC50 is the number of unique clones which make up the top 50% of the sample's abundance.
+For polyclonal samples, one may expect a low Gini coefficient, high Shannon Index, and
+high UC50 (proportional to the total number of unique sites identified in the sample).
 
 Under most circumstances only a subset of sites will be sampled. We thus
 include an estimate of sample size based on frequency of isolation information
@@ -55,117 +64,7 @@ correction.
 kable(summaryTable, caption="Sample Summary Table", row.names=FALSE, format="html", digits = 4)
 ```
 
-
-## Population Diversity over time points
-
-The graph below visualizes population based summaries as a function of time.
-
-```{r pop_graphs, results='asis', fig.width=8, fig.height=6}
-if(length(unique(timepointPopulationInfo$group)) >1 ){
-  ggplot(data=timepointPopulationInfo, aes(group, value)) + geom_bar(stat="identity") + facet_wrap(~variable, scales="free") +
-    scale_x_discrete(limits = unique(timepointPopulationInfo$group)) +
-    theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1))
-}else{cat(paste0("**Only one timepoint, ", unique(levels(timepointPopulationInfo$group)), ", present.  Insufficient data available to plot population estimators across timepoints.**"))}
-```
-
-***
-<P style="page-break-before: always">
-## Relative abundance of cell clones
-
-The relative abundance of cell clones is summarized in the attached stacked bar graphs.  The cell fraction studied is named at the top, the time points are marked at the bottom. The different bars in each panel show the major cell clones, as marked by integration sites.  A key to the sites is shown at the right. Throughout the whole report, each integration site is assigned a ```GeneName``` given by:
-
-<font face="Courier" color="#333399">
- - ```GeneName``` refers to the closest gene to either end and strand,  
- - __*__  indicates the site is within a transcription unit,  
- - __~__  indicates the site is within 50kb of a cancer related gene,  
- - __!__  indicates the gene was assocaited with lymphoma in humans.  
-</font>
- 
-Integration sites were recovered using ligation mediated PCR after random fragmentation of genomic DNA, which reduces recovery biases compared with restriction enzyme cleavage. Relative abundance was not measured from read counts, which are known to be inaccurate, but from marks introduced into DNA specimens prior to PCR amplification using the SonicLength method [PMID:22238265](http://www.ncbi.nlm.nih.gov/pubmed/22238265).
-
-In the barplots below, any sites with Estimated Absolute Abundance below `r abundCutoff.barplots` are binned as LowAbund.
-
-```{r barPlots, fig.height=12, fig.width=12}
-gene_names_barplot <- unique(barplotAbunds$maskedRefGeneName)
-colors_barplot <- colorRampPalette(brewer.pal(12, "Paired"))(length(gene_names_barplot))
-siteColors <- structure(colors_barplot, names=gene_names_barplot)
-siteColors["LowAbund"] <- "#E0E0E0"
-
-n_timpoints_for_cell_type <- barplotAbunds %>%
-    distinct(CellType, Timepoint) %>%
-    group_by(CellType) %>%
-    summarize(TimePointCount = n())
-
-n_timpoints_for_cell_type <- mutate(
-    n_timpoints_for_cell_type, 
-    FractionTimePointCount = TimePointCount / max(TimePointCount)
-)
-
-barplotAbunds <- left_join(barplotAbunds, n_timpoints_for_cell_type, by='CellType') 
-
-ggplot(data=barplotAbunds, aes(Timepoint, estAbundProp, fill=maskedRefGeneName)) +
-  geom_bar(aes(width=0.9*FractionTimePointCount), stat="identity") + facet_wrap(~CellType, scales="free") + scale_fill_manual(values=siteColors) +
-  labs(y="Relative Sonic Abundance", x="Timepoint", fill="GeneNames") +
-  scale_y_continuous(labels=percent)  +
-  theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1))
-```
-***
-<P style="page-break-before: always">
-Here is another way to perceive top ranking integration sites by genes within each celltype.  Any sites with Estimated Absolute Abundance below `r abundCutoff.detailed` are binned as LowAbund.
-
-```{r sitetype_heatmap, fig.width=12, fig.height=16}
-ggplot(data=detailedAbunds, aes(Timepoint, maskedRefGeneName, fill=estAbundProp)) + geom_tile() +
-  scale_fill_continuous(name='Relative\nAbundance', labels=percent, low="#E5F5E0", high="#2B8CBE") + 
-  facet_wrap(~CellType, scales="free_x", ncol=6) + labs(y="SiteType", x="Timepoint") +
-  theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1))
-```
-
-***
-<P style="page-break-before: always">
-## Longitudinal behavior of major clones
-
-When multiple time points are available, it is of interest to track the behavior of the most abundant clones.  A plot of the relative abundances of major clones, based on output from SonicLength, is shown below. For cases where only a single time point is available, the data is just plotted as unlinked points. 
-
-```{r ParallelLines, fig.width=10, fig.height=10}
-if (has_longitudinal_data) {
-  ggplot(longitudinal, aes(x=Timepoint, y=estAbundProp)) +
-    geom_point(size=3) +
-    geom_line(aes(colour=posid, group=posid), alpha=.5, show_guide=FALSE) +
-    facet_wrap(~CellType, scales="free") +
-    ggtitle(paste("Patient:", patient, "Trial:", trial)) + xlab("Timepoint") + 
-    scale_y_continuous(name="Relative Sonic Abundance",
-                       labels=percent,expand=c(0,0)) +
-    theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))
-  }else{cat(paste0("**Only one timepoint, ", unique(levels(timepointPopulationInfo$group)), ", present.  Insufficient data available to plot changes of clone densities across timepoints.**"))}
-```
-
-***
-<P style="page-break-before: always">
-## Integration sites near particular genes of interest
-
-Integration sites near genes that have been associated with adverse events are of particular interest. Thus, we have cataloged all integration sites for which a gene of interest is the nearest cancer-related gene.
-Results are summarized below as a scatter plot where the y-axis shows relative abundance of sites and x-axis is distance to the nearest onconogene 5' end.
-
-Negative distances indicate that the integration site is downstream from (i.e. after) the TSS.  Positive distances indicate that the integration site is upstream from (i.e. before) the TSS.  Note that all RefSeq splicing isoforms are used for this analysis, so the reference TSS may not be the same for each listed integration site.
-
-
-```{r badActors, include=FALSE}
-#this chunk has to have include=FALSE otherwise it inexplicably displays a verbatim
-#copy of the longitudinal data graph... I have absolutely no idea why...
-#a bit hackey but it works
-badActorOut <- NULL #clear it out
-badActorOut <- lapply(badActors, function(badActor){
-  sites <- as.data.frame(badActorData[[badActor]])
-  if(nrow(sites)>1){
-    knit_child("badActorPartial.Rmd", quiet=T, envir=environment())
-    }else{
-      knit_expand(text=paste0("### ", badActor, "\n **No sites within 100kb of any ", badActor," TSS for this patient.**\n"))
-    }
-  })
-```
-`r knit(text = unlist(badActorOut))`
-
-`r percent_cutoff <- 0.2`  
+`r percent_cutoff <- 0.2`
 ***
 <P style="page-break-before: always">
 ## Do any uniquely mapped clones account for greater than `r percent(percent_cutoff)` of the total?
@@ -207,20 +106,20 @@ df <- as.data.frame(standardizedDereplicatedSites[rows,])
 }
 ```
 
-### Do any multihit event account for greater than `r percent(percent_cutoff)` of the total?
+## Do any multihit event account for greater than `r percent(percent_cutoff)` of the total?
 
 Up until now, all the analysis has been looking at integration sites that can be uniquely mapped. But it is also helpful to look at reads finding multiple equally good alignments in the genome which can be reffered to as 'Multihits'. If an integration site occurred within a repeat element (i.e. Alus, LINE, SINE, etc), then it might be helpful to access those sites for potential detrimental effects. These collection of sequences are analyzed separately due to their ambiguity. To make some sense of these multihits, we bin any sequence(s) which share 1 or more genomic locations hence forming psuedo-collections which can be reffered to as OTUs (operation taxonomic units). Once the OTUs are formed, we compare breakpoints of unique sites and multihits. The idea is to see if there are any multihits which higher in abundance than a unique site in a given sample. Below is a table similar to the one shown previously except we show any events instead of genomic locations which might account for greater than `r percent(percent_cutoff)` of all clones in the data.
 
 ```{r TwentyPercSitesMulti, results="asis"}
 if( nrow(sites.multi) < 1 ) {
 	cat(sprintf("<strong>No multihits sites found in this patient which are greater than %s of the total data.</strong>", percent(percent_cutoff)))
-} else { 
+} else {
 total.abundance <- sum(mcols(standardizedDereplicatedSites)$estAbund,
 	sites.multi$estAbund)
 
 is.multi.expanded <- sites.multi$estAbund > total.abundance*percent_cutoff
 
-if( !any(is.multi.expanded) ) { 
+if( !any(is.multi.expanded) ) {
 	cat(sprintf("<strong>No multihits sites found in this patient which are greater than %s of the total data.</strong>", percent(percent_cutoff)))
 } else {
 	df <- subset(sites.multi, is.multi.expanded)
@@ -242,7 +141,147 @@ if( !any(is.multi.expanded) ) {
 
 ***
 <P style="page-break-before: always">
-## What is the most frequently occuring gene types in subject `r patient`?
+## Relative abundance of cell clones
+
+The relative abundance of cell clones is summarized in the attached stacked bar graphs.  The cell fraction studied is named at the top, the time points are marked at the bottom. The different bars in each panel show the major cell clones, as marked by integration sites.  A key to the sites is shown at the right. Throughout the whole report, each integration site is assigned a ```GeneName``` given by:
+
+<font face="Courier" color="#333399">
+ - ```GeneName``` refers to the closest gene to either end and strand,  
+ - __*__  indicates the site is within a transcription unit,  
+ - __~__  indicates the site is within 50kb of a cancer related gene,  
+ - __!__  indicates the gene was assocaited with lymphoma in humans.  
+</font>
+
+Integration sites were recovered using ligation mediated PCR after random fragmentation of genomic DNA, which reduces recovery biases compared with restriction enzyme cleavage. Relative abundance was not measured from read counts, which are known to be inaccurate, but from marks introduced into DNA specimens prior to PCR amplification using the SonicLength method [PMID:22238265](http://www.ncbi.nlm.nih.gov/pubmed/22238265).
+
+In the barplots below, the x-axis indicates each sample type and time point, the y-axis is scaled by the number of cells sampled (SonicBreaks), where the range is taken from the most abundant sample.  The top 10 sites from each cell type have been named for the nearest gene and pooled over all cell types. The remaining sites are binned as low abundance (LowAbund; grey).
+
+```{r totalBarPlots, fig.height=ifelse(n_cell_types <= 2, 6, 2*n_cell_types), fig.width=12}
+gene_names_barplot <- frequent_genes_barplot
+colors_barplot <- colorRampPalette(brewer.pal(12, "Paired"))(length(gene_names_barplot))
+siteColors <- structure(colors_barplot, names=gene_names_barplot)
+siteColors["LowAbund"] <- "#E0E0E0"
+
+n_timepoints_for_cell_type <- barplotAbunds %>%
+    distinct(CellType, Timepoint) %>%
+    group_by(CellType) %>%
+    summarize(TimePointCount = n())
+
+n_timepoints_for_cell_type <- mutate(
+    n_timepoints_for_cell_type,
+    FractionTimePointCount = TimePointCount / max(TimePointCount)
+)
+
+barplotAbunds <- left_join(barplotAbunds, n_timepoints_for_cell_type, by='CellType')
+
+ggplot(data=barplotAbunds, aes(Timepoint, estAbund, fill=maskedRefGeneName)) +
+  geom_bar(aes(), stat="identity") +
+  facet_grid(CellType ~ ., scales="fixed") +
+  scale_fill_manual(values=siteColors) +
+  labs(y="Sonic Abundance", x="Timepoint", fill="GeneNames") +
+  scale_y_continuous(labels = scales::comma)  +
+  theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1),
+    panel.background = element_rect(fill = "white"),
+    panel.border = element_rect(colour = "grey", fill=NA, size=0.5)
+  )
+```
+
+***
+<P style="page-break-before: always">
+Below are similar barplots to the previous figure, but the y-axis is scaled by proportion of the total, not number of cells sampled.  Comparison to the plot above helps distinguish samples with low yield of integration sites from samples with high yield and clonal expansions.  The key indicates the 10 most abundant clones in each sample. Cutoff values for binning clones as LowAbund (grey) are indicated at the top of each panel.
+
+```{r sampleBarPlots, fig.height=6*(1+as.integer((n_cell_types-0.1)/3)), fig.width=12}
+barplotAbundsBySample <- left_join(barplotAbundsBySample, n_timepoints_for_cell_type, by='CellType')
+barplotAbundsBySample$CellType <- paste0(
+  as.character(barplotAbundsBySample$CellType),
+  "\n(cutoff = ",
+  abundCutoff.barplots[barplotAbundsBySample$CellType],
+  " cells)")
+barplotAbundsBySample <- split(barplotAbundsBySample, barplotAbundsBySample$CellType)
+
+#Relative abundance by CellTypes
+grid.arrange(
+  grobs = lapply(barplotAbundsBySample, function(data){
+    plot <- ggplot(data=data, aes(Timepoint, estAbundProp, fill=maskedRefGeneName)) +
+      geom_bar(aes(width=0.9*FractionTimePointCount), stat="identity") +
+      facet_wrap(~CellType, scales="free") +
+      scale_fill_manual(values=siteColors) +
+      labs(y="Relative Sonic Abundance", x="Timepoint", fill="GeneNames") +
+      scale_y_continuous(labels=percent)  +
+      theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1),
+          panel.background = element_rect(fill = "white"),
+          panel.border = element_rect(colour = "grey", fill=NA, size=0.5))
+    ggplotGrob(plot)
+  }),
+  ncol = 3,
+  nrow = 1+as.integer((n_cell_types-0.1)/3)
+)
+```
+***
+<P style="page-break-before: always">
+Here is another way to perceive top ranking integration sites by genes within each celltype.  Any sites with Estimated Absolute Abundance below `r abundCutoff.detailed` are binned as LowAbund.
+```{r}
+nrows_plot <- as.integer(n_cell_types/6) + 1*ifelse( n_cell_types %% 6 > 0, 1, 0)
+ncols_plot <- ifelse(
+  nrows_plot > 1,
+  as.integer(n_cell_types / nrows_plot) + ifelse(n_cell_types %% 2 == 1, 1, 0),
+  n_cell_types)
+```
+```{r sitetype_heatmap, fig.width=2*ncols_plot+2, fig.height=10*(1+as.integer((n_cell_types-0.1)/6))}
+ggplot(data=detailedAbunds, aes(Timepoint, maskedRefGeneName, fill=estAbundProp)) + geom_tile() +
+  scale_fill_continuous(name='Relative\nAbundance', labels=percent, low="#E5F5E0", high="#2B8CBE") +
+  facet_wrap(~CellType, scales="free_x", ncol=ncols_plot) + labs(y="SiteType", x="Timepoint") +
+  theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1))
+```
+
+***
+<P style="page-break-before: always">
+## Longitudinal behavior of major clones
+
+When multiple time points are available, it is of interest to track the behavior of the most abundant clones.  A plot of the relative abundances of major clones, based on output from SonicLength, is shown below. For cases where only a single time point is available, the data is just plotted as unlinked points.
+
+```{r ParallelLines, fig.width=10, fig.height=10}
+if (has_longitudinal_data) {
+  ggplot(longitudinal, aes(x=Timepoint, y=estAbundProp)) +
+    geom_point(size=3) +
+    geom_line(aes(colour=posid, group=posid), alpha=.5, show_guide=FALSE) +
+    facet_wrap(~CellType, scales="free") +
+    ggtitle(paste("Patient:", patient, "Trial:", trial)) + xlab("Timepoint") +
+    scale_y_continuous(name="Relative Sonic Abundance",
+                       labels=percent,expand=c(0,0)) +
+    theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))
+  }else{cat(paste0("**Only one timepoint, ", unique(levels(timepointPopulationInfo$group)), ", present.  Insufficient data available to plot changes of clone densities across timepoints.**"))}
+```
+
+***
+<P style="page-break-before: always">
+## Integration sites near particular genes of interest
+
+Integration sites near genes that have been associated with adverse events are of particular interest. Thus, we have cataloged all integration sites for which a gene of interest is the nearest cancer-related gene.
+Results are summarized below as a scatter plot where the y-axis shows relative abundance of sites and x-axis is distance to the nearest onconogene 5' end.
+
+Negative distances indicate that the integration site is downstream from (i.e. after) the TSS.  Positive distances indicate that the integration site is upstream from (i.e. before) the TSS.  Note that all RefSeq splicing isoforms are used for this analysis, so the reference TSS may not be the same for each listed integration site.
+
+
+```{r badActors, include=FALSE}
+#this chunk has to have include=FALSE otherwise it inexplicably displays a verbatim
+#copy of the longitudinal data graph... I have absolutely no idea why...
+#a bit hackey but it works
+badActorOut <- NULL #clear it out
+badActorOut <- lapply(badActors, function(badActor){
+  sites <- as.data.frame(badActorData[[badActor]])
+  if(nrow(sites)>1){
+    knit_child("badActorPartial.Rmd", quiet=T, envir=environment())
+    }else{
+      knit_expand(text=paste0("### ", badActor, "\n **No sites within 100kb of any ", badActor," TSS for this patient.**\n"))
+    }
+  })
+```
+`r knit(text = unlist(badActorOut))`
+
+***
+<P style="page-break-before: always">
+## What are the most frequently occuring gene types in subject `r patient`?
 `r max_num_words=100`  
 
 The word clouds below show the abundances of integration sites as designated by genenames for each sample. Each word cloud is labled by the timepoint, celltype, and the range of sonic abundance for the top `r max_num_words` sites.
@@ -261,11 +300,11 @@ df.wordlist <- df.wordlist[unique(paste(df$Timepoint, df$CellType))]
 max_num_words=100
 drange <- lapply(df.wordlist, function(df) paste(range(sort(df$freq, decreasing=TRUE)[1:100], na.rm=TRUE), collapse=":") )
 names(df.wordlist) <- paste(names(df.wordlist), "<strong>", drange, "</strong>")
-	null <- sapply(seq(df.wordlist), function(i) 
+	null <- sapply(seq(df.wordlist), function(i)
 plotWordCloud(df.wordlist[[i]],
               scale=c(3,0.5),
-              min.freq=1, max.words=max_num_words, 
-              rot.per = 0, 
+              min.freq=1, max.words=max_num_words,
+              rot.per = 0,
               colors=c(colSets("Set1")[-6],colSets("Paired")))
 )
 ```
@@ -315,15 +354,15 @@ if(any(rows)) {
   toprint$Aliasposid <- NULL
   tps <- sortTimePoints(toprint$timepoint)  
   toprint$timepoint <- factor(toprint$timepoint, levels=names(tps))
-  toprint <- arrange(toprint, patient,timepoint,celltype,estAbundance1Rank)	
+  toprint <- arrange(toprint, patient,timepoint,celltype,estAbundance1Rank)
   toprint$isMultiHit <- NULL
   names(toprint) <- col.keys[names(toprint)]
   toprint$RelativeAbundance <- percent(toprint$RelativeAbundance)
-  kable(toprint, caption="All Sites >20% of the Total", 
+  kable(toprint, caption="All Sites >20% of the Total",
         format="html", row.names=FALSE)  
-} else { 
+} else {
   cat("<strong>No sites found in this patient which are >20% of the total data after combining multihits.</strong>")  
-}	
+}
 ```
 
 ### SiteTypes
@@ -353,8 +392,8 @@ p <- qplot(data=sums, x=timepoint, y=Props, colour=siteType2, xlab="Timepoint",
            geom="jitter", position = position_jitter(h = 0.001)) +
   geom_hline(y=0.05,linetype='dotted') +
   scale_colour_manual(values=siteTypeCols) +
-  scale_y_continuous(name="Relative Abundance", labels=percent, expand=c(0,0.01)) + 
-  facet_grid(.~celltype, scales="free_x", space="free_x") + 
+  scale_y_continuous(name="Relative Abundance", labels=percent, expand=c(0,0.01)) +
+  facet_grid(.~celltype, scales="free_x", space="free_x") +
   theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1))
 p <- direct.label(p,"smart.grid")
 print(p)
@@ -364,8 +403,8 @@ What is the most frequently occuring SiteType in subject `r patient`?
 
 ```{r wordle, fig.width=8, fig.height=8}
 counts <- count(sums,"siteType"); names(counts)[1] <- "word"
-suppressWarnings(plotWordCloud(counts, scale=c(3,0.5), min.freq=1, max.words=500, 
-                               rot.per = 0, 
+suppressWarnings(plotWordCloud(counts, scale=c(3,0.5), min.freq=1, max.words=500,
+                               rot.per = 0,
                                colors=c(colSets("Set1")[-6],colSets("Paired"))))
 ```
 
@@ -387,21 +426,21 @@ if(is.null(dim(toCheck))) {
 } else {
   toCheck.aliases <- rownames(toCheck)
   sites.gr <- with(unique(test[test$Alias %in% toCheck.aliases,
-                               c('Chr','strand','Alias','Position','isFrag')]), 
-                   GRanges(seqnames=Chr, strand=strand, Alias=Alias, isFrag=isFrag, 
+                               c('Chr','strand','Alias','Position','isFrag')]),
+                   GRanges(seqnames=Chr, strand=strand, Alias=Alias, isFrag=isFrag,
                            IRanges(start=Position, width=1)))
-  
-  
+
+
   test.gr <- split(sites.gr, paste(mcols(sites.gr)$Alias))
-  
-  overlap.res <- sapply(test.gr, findOverlaps, maxgap=5, 
+
+  overlap.res <- sapply(test.gr, findOverlaps, maxgap=5,
                         ignoreSelf=T, ignoreRedundant=T)
-  
+
   ## find overlap & get union of sites per isolation method for percent total ##
-  overlap.res <- lapply(test.gr, 
+  overlap.res <- lapply(test.gr,
                         function(x) {
-                          res <- as.data.frame(findOverlaps(x, maxgap=5, 
-                                                            ignoreSelf=TRUE, 
+                          res <- as.data.frame(findOverlaps(x, maxgap=5,
+                                                            ignoreSelf=TRUE,
                                                             ignoreRedundant=TRUE))
                           res$isFrag1 <- mcols(x)$isFrag[res$queryHits]
                           res$isFrag2 <- mcols(x)$isFrag[res$subjectHits]
@@ -411,14 +450,14 @@ if(is.null(dim(toCheck))) {
                                 count(res,c("isFrag1","isFrag2")),                                
                                 UnionSites=union.res)
                         })
-  
+
   rm("sites.gr","test.gr")
   cleanit <- gc()  
-  
+
   overlap.res <- do.call(rbind, overlap.res)
   names(overlap.res)[grepl("freq",names(overlap.res))] <- "TotalOverlap"
   overlap.res$PercentOverlap <- percent(with(overlap.res,TotalOverlap/UnionSites))
-  
+
   overlap.res$Tp <- sub("(.+):.+","\\1",overlap.res$Sample)
   overlap.res$Cell <- sub(".+:(.+)","\\1",overlap.res$Sample)
   tps <- sortTimePoints(overlap.res$Tp)  

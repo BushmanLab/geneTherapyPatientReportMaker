@@ -1,4 +1,22 @@
-options(stringsAsFactors = FALSE)
+#    This source code file is a component of the larger INSPIIRED genomic analysis software package.
+#    Copyright (C) 2016 Frederic Bushman
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+library(DBI, quietly=TRUE, verbose=FALSE)
+library(yaml, quietly=TRUE, verbose=FALSE)
+options(stringsAsFactors = FALSE, useFancyQuotes=FALSE)
 
 #' set all argumentgs for the script
 #' @return list of argumentgs
@@ -11,17 +29,18 @@ set_args <- function(...) {
     suppressMessages(library(argparse))
     parser <- ArgumentParser(description="Gene Therapy Patient Report for Single Patient")
     parser$add_argument("sample_gtsp", nargs='?', default='sampleName_GTSP.csv')
+    parser$add_argument("-c", default="./INSPIIRED.yml", help="path to INSPIIRED configuration file.")
     parser$add_argument("-s", action='store_true', help="abundance by sonicLength package (Berry, C. 2012)")
     parser$add_argument("-r", "--ref_genome", default="hg18", help="reference genome used for all samples")
-    parser$add_argument("--sites_group", default="intsites_miseq.read", help="group to use for integration sites db from ~/.my.cnf")
-    parser$add_argument("--gtsp_group", default="specimen_management", help="group to use for specimen management GTSP db from ~/.my.cnf")
+#    parser$add_argument("--sites_group", default="intsites_miseq.read", help="group to use for integration sites db from ~/.my.cnf")
+#    parser$add_argument("--gtsp_group", default="specimen_management", help="group to use for specimen management GTSP db from ~/.my.cnf")
     parser$add_argument("-d", "--data_directory", default="", help="Set filepath to data instead of using intSite db")
     parser$add_argument("-i", "--specimen_info", default="", help="Set filepath to specimen infomation instead of using specimen management database")
     parser$add_argument("--ref_seq", help="read Ref Seq genes from file")
     parser$add_argument("--output", help='HTML and MD file names instead of Trial.Patient.Date name')
 
     arguments <- parser$parse_args(...)
-    
+
     ## gene files
     arguments$oncoGeneFile <- ""
     if(grepl("^hg", arguments$ref_genome)) arguments$oncoGeneFile <- "allonco_no_pipes.csv"
@@ -46,10 +65,16 @@ set_args <- function(...) {
 arguments <- set_args()
 print(arguments)
 
+arguments$gtsp_group
+# Load configuration file
+if (!file.exists(arguments$c)) stop("the configuration file can not be found.")
+config <<- yaml.load_file(arguments$c)
+
+
 ## defaults:
 use.sonicLength <-  ! arguments$s
-db_group_sites <- arguments$sites_group
-db_group_gtsp <- arguments$gtsp_group
+#db_group_sites <- arguments$sites_group
+#db_group_gtsp <- arguments$gtsp_group
 ref_genome <- arguments$ref_genome
 codeDir <- arguments$codeDir
 dataDir <- arguments$data_directory
@@ -69,9 +94,8 @@ libs <- c("RMySQL", "plyr", "dplyr", "stringr", "reshape2",
           "RColorBrewer", "magrittr", "knitr")
 null <- suppressMessages(sapply(libs, library, character.only=TRUE))
 
-R_source_files <- c("utilities.R", "specimen_management.R", 
-    "estimatedAbundance.R", "read_site_totals.R", "ref_seq.R",
-    "populationInfo.R", "abundanceFilteringUtils.R")
+R_source_files <- c("utilities.R", "estimatedAbundance.R", "read_site_totals.R", "ref_seq.R",
+                    "populationInfo.R", "abundanceFilteringUtils.R")
 
 null <- sapply(R_source_files, function(x) source(file.path(codeDir, x)))
 
@@ -133,28 +157,53 @@ if( length(dataDir)>0 ){
     uniqueSites.gr <- granges(uniqueSamples)
     uniqueSites.gr$sampleName <- uniqueSamples$sampleName
     mcols(uniqueSites.gr) <- merge(mcols(uniqueSites.gr), sampleName_GTSP, by = "sampleName")
-}
-
-if( !length(dataDir)>0 ){
-    dbConn <- dbConnect(MySQL(), group=db_group_sites)
+}else{
+# Connect to my database
+  if (config$dataBase == 'mysql'){
+    stopifnot(file.exists("~/.my.cnf"))
+    dbConn <- dbConnect(MySQL(), group=config$mysqlConnectionGroup)
     info <- dbGetInfo(dbConn)
     dbConn <- src_sql("mysql", dbConn, info = info)
+    dbConnSampleManagemnt <-  dbConnect(MySQL(), group=config$mysqlSpecimenManagementGroup)
+  }else if (config$dataBase == 'sqlite') {
+    dbConn <- dbConnect(RSQLite::SQLite(), dbname=config$sqliteIntSitesDB)
+    info <- dbGetInfo(dbConn)
+    dbConn <- src_sql("sqlite", dbConn, info = info)
+    dbConnSampleManagemnt <- dbConnect(RSQLite::SQLite(), dbname=config$sqliteSampleManagement)
+  } else { stop('Can not establish a connection to the database') }
 
-    if( !all(setNameExists(sampleName_GTSP, dbConn)) ) {
-        sampleNameIn <- paste(sprintf("'%s'", sampleName_GTSP$sampleName),
-                              collapse=",")
-        q <- sprintf("SELECT * FROM samples WHERE sampleName IN (%s)", sampleNameIn)
-        message("\nChecking database:\n",q,"\n")
-        write.table(tbl(dbConn, sql(q)), quote=FALSE, row.name=FALSE)
-        message()
-        stop("Was --ref_genome specified correctly or did query return all entries")
-    }
+if( !all(setNameExists(sampleName_GTSP, dbConn)) ) {
+    sampleNameIn <- paste(sprintf("'%s'", sampleName_GTSP$sampleName), collapse=",")
 
-    read_sites_sample_GTSP <- get_read_site_totals(sampleName_GTSP, dbConn)
+    q <- sprintf("SELECT * FROM samples WHERE sampleName IN (%s)", sampleNameIn)
+    message("\nChecking database:\n",q,"\n")
+
+    t <- dbSendQuery(con, q)
+    write.table(t)
+
+    stop("Was --ref_genome specified correctly or did query return all entries")
+   } else {
+    message("All samples are in DB.")
+   }
 }
 
 if( !length(infoPath)>0 ){
-  sets <- get_metadata_for_GTSP(unique(sampleName_GTSP$GTSP), db_group_gtsp)
+  get_metadata_for_GTSP <- function(GTSP, GTSPDBconn) {
+    stopifnot(length(GTSP) == length(unique(GTSP)))
+
+    GTSP = paste(sQuote(GTSP), collapse=',')
+
+    query = paste0("SELECT Trial, SpecimenAccNum, Patient, Timepoint, CellType, SamplePrepMethod, VCN
+                   FROM gtsp
+                   WHERE SpecimenAccNum in (", GTSP, ");");
+    
+    sets <- dbGetQuery(GTSPDBconn, query)
+
+    names(sets) <- c("Trial", "GTSP", "Patient", "Timepoint", "CellType", "FragMethod", "VCN")
+    sets
+  }
+
+  sets <- get_metadata_for_GTSP(unique(sampleName_GTSP$GTSP), dbConnSampleManagemnt)
 }else{
   sets <- read.csv(infoPath, header = TRUE)
 }
@@ -174,10 +223,12 @@ patient <- sets$Patient[1]
 stopifnot(length(unique(sets$Trial)) == 1)
 trial <- sets$Trial[1]
 
+
 RDataFile <- paste(trial, patient, format(Sys.Date(), format="%Y%m%d"), "RData", sep=".")
 
 # all GTSP in the database
 stopifnot(nrow(sets) == length(unique(sampleName_GTSP$GTSP)))
+
 
 ##end INPUTS
 
@@ -190,19 +241,18 @@ freeze <- sampleName_GTSP[1, "refGenome"]
 
 ##==========GET AND PERFORM BASIC DEREPLICATION/SONICABUND ON SITES=============
 if( !length(dataDir)>0 ){
-    message("Fetching unique sites and estimating abundance")
-    dbConn <- dbConnect(MySQL(), group=db_group_sites)
-    info <- dbGetInfo(dbConn)
-    dbConn <- src_sql("mysql", dbConn, info = info)
-    sites <- merge(getUniquePCRbreaks(sampleName_GTSP, dbConn), sampleName_GTSP)
-    names(sites)[names(sites)=="position"] <- "integration"
+  message("Fetching unique sites and estimating abundance")
 
-    #we really don't care about seqinfo - we just want a GRange object for easy manipulation
-    uniqueSites.gr <- GRanges(seqnames=Rle(sites$chr),
-                              ranges=IRanges(start=pmin(sites$integration, sites$breakpoint),
-                                             end=pmax(sites$integration, sites$breakpoint)),
-                              strand=Rle(sites$strand))
-    mcols(uniqueSites.gr) <- sites[,c("sampleName", "GTSP")]
+
+  sites <- merge(getUniquePCRbreaks(sampleName_GTSP, dbConn), sampleName_GTSP)
+  names(sites)[names(sites)=="position"] <- "integration"
+
+  #we really don't care about seqinfo - we just want a GRange object for easy manipulation
+  uniqueSites.gr <- GRanges(seqnames=Rle(sites$chr),
+                            ranges=IRanges(start=pmin(sites$integration, sites$breakpoint),
+                                           end=pmax(sites$integration, sites$breakpoint)),
+                            strand=Rle(sites$strand))
+  mcols(uniqueSites.gr) <- sites[,c("sampleName", "GTSP")]
 }
 
 #standardize sites across all GTSPs
@@ -353,18 +403,37 @@ standardizedDereplicatedSites$nearest_refSeq_gene <- paste0(
     standardizedDereplicatedSites$geneMark)
 
 #===================GENERATE EXPANDED CLONE DATAFRAMES======================
-#barplots
-cutoff_genes_barplot <- getMostAbundantGenes(standardizedDereplicatedSites, 20)
-abundCutoff.barplots <- cutoff_genes_barplot[[1]]
-frequent_genes_barplot <- cutoff_genes_barplot[[2]]
+standardizedDereplicatedSamples <- split(
+  standardizedDereplicatedSites, 
+  standardizedDereplicatedSites$CellType
+)
 
-barplotAbunds <- getAbundanceSums(maskGenes(
-    standardizedDereplicatedSites,frequent_genes_barplot), c("CellType", "Timepoint"))
+cutoff_genes_barplot <- lapply(
+  standardizedDereplicatedSamples,
+  getMostAbundantGenes, 
+  numGenes = 10
+)
 
-barplotAbunds <- order_barplot(barplotAbunds)
-CellType_order <- unique(barplotAbunds$CellType)
-barplotAbunds$CellType <- factor(barplotAbunds$CellType, 
-                                 levels=CellType_order)
+abundCutoff.barplots <- sapply(cutoff_genes_barplot, "[[", 1)
+frequent_genes_barplot_by_sample <- lapply(cutoff_genes_barplot, "[[", 2)
+frequent_genes_barplot <- unique(unlist(frequent_genes_barplot_by_sample))
+
+barplotAbunds <- lapply(1:length(standardizedDereplicatedSamples), function(i){
+  sites <- standardizedDereplicatedSamples[[i]]
+  genes <- frequent_genes_barplot
+  getAbundanceSums(maskGenes(sites, genes), c("CellType", "Timepoint"))
+})
+barplotAbundsBySample <- lapply(1:length(standardizedDereplicatedSamples), function(i){
+  sites <- standardizedDereplicatedSamples[[i]]
+  genes <- frequent_genes_barplot_by_sample[[i]]
+  getAbundanceSums(maskGenes(sites, genes), c("CellType", "Timepoint"))
+})
+
+barplotAbunds <- bind_rows(lapply(barplotAbunds, order_barplot))
+barplotAbundsBySample <- bind_rows(lapply(barplotAbundsBySample, order_barplot))
+CellType_order <- unique(standardizedDereplicatedSites$CellType)
+barplotAbunds$CellType <- factor(barplotAbunds$CellType, levels=CellType_order)
+barplotAbundsBySample$CellType <- factor(barplotAbundsBySample$CellType, levels=CellType_order)
 
 #detailed abundance plot
 cutoff_genes <- getMostAbundantGenes(standardizedDereplicatedSites, 50)
@@ -414,7 +483,7 @@ popSummaryTable <- merge(sets,  populationInfo, by.x="GTSP", by.y="group")
 popSummaryTable <- arrange(popSummaryTable,Timepoint,CellType)
 
 cols <- c("Trial", "GTSP", "Replicates", "Patient", "Timepoint", "CellType", 
-          "TotalReads", "InferredCells", "UniqueSites", "FragMethod", "VCN", "S.chao1", "Gini", "Shannon")
+          "TotalReads", "InferredCells", "UniqueSites", "FragMethod", "VCN", "S.chao1", "Gini", "Shannon", "UC50")
 summaryTable <- popSummaryTable[,cols]
 
 summaryTable$VCN <- ifelse(summaryTable$VCN == 0, NA, summaryTable$VCN)
@@ -446,11 +515,28 @@ if( length(dataDir)>0 ){
     }))
     row.names(sites.multi) <- NULL
 }else{
-    message("Fetching multihit sites and estimating abundance")
-    dbConn <- dbConnect(MySQL(), group=db_group_sites)
-    info <- dbGetInfo(dbConn)
-    dbConn <- src_sql("mysql", dbConn, info = info)
-    sites.multi <- merge( suppressWarnings(getMultihitLengths(sampleName_GTSP, dbConn)), sampleName_GTSP)
+  message("Fetching multihit sites and estimating abundance")
+
+  options(useFancyQuotes=FALSE)
+  sql <- paste0("select samples.sampleName, samples.refGenome, multihitpositions.multihitID, ",
+                "multihitlengths.length from multihitlengths left join multihitpositions on ",
+                "multihitpositions.multihitID = multihitlengths.multihitID left join samples on ",
+                "samples.sampleID = multihitpositions.sampleID where sampleName in (",
+                paste0(sQuote(unique(sampleName_GTSP$sampleName)), collapse=","),  ")")
+
+  # Create a new DB connection.
+  # This connection is not a dplyr src_sql() connection like the previous dbConns.
+
+  # Connect to my database
+  if (config$dataBase == 'mysql'){
+     stopifnot(file.exists("~/.my.cnf"))
+     dbConn <- dbConnect(MySQL(), group=config$mysqlConnectionGroup)
+  }else if (config$dataBase == 'sqlite') {
+     dbConn <- dbConnect(RSQLite::SQLite(), dbname=config$sqliteIntSitesDB)
+  } else { stop('Can not establish a connection to the database') }
+
+  multiHitLengths <- unique(dbGetQuery(dbConn, sql))
+  sites.multi <- merge(multiHitLengths, sampleName_GTSP)
 }
 
 if( nrow(sites.multi) > 0 ) {
