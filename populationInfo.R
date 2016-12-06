@@ -1,3 +1,19 @@
+#    This source code file is a component of the larger INSPIIRED genomic analysis software package.
+#    Copyright (C) 2016 Frederic Bushman
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 calculateShannon <- function(dereplicated){
   shannonInput <- as.data.frame(mcols(dereplicated)[,c("posid", "Timepoint", "estAbund")])
   
@@ -53,10 +69,18 @@ getPopulationInfo <- function(replicated, dereplicated, splitBy){
     data.frame("group"=name,
                "S.chao1"=calculateChao(replicatedSites),
                "Gini"=calculateGini(dereplicatedSites),
-               "Shannon"=calculateShannon(dereplicatedSites))
+               "Shannon"=calculateShannon(dereplicatedSites),
+               "UC50"=calculateUC50(dereplicatedSites$estAbund))
   })
 
   populationInfo <- do.call(rbind, populationInfo)
   rownames(populationInfo) <- NULL
   populationInfo
+}
+
+calculateUC50 <- function(abund){
+  stopifnot(is.vector(abund) & is.numeric(abund))
+  abund <- abund[order(abund)]
+  accum <- sapply(1:length(abund), function(i){sum(abund[1:i])})
+  length(accum[accum >= sum(abund)/2])
 }
