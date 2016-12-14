@@ -163,8 +163,8 @@ for(col in which(!sapply(sets, class) %in% c("numeric", "integer"))) {
 }
 
 # reports are for a single patient
-stopifnot(length(unique(sets$Patient)) == 1)
-patient <- sets$Patient[1]
+#stopifnot(length(unique(sets$Patient)) == 1)
+patient <- "pooled_samples"
 # and for a single trial
 stopifnot(length(unique(sets$Trial)) == 1)
 trial <- sets$Trial[1]
