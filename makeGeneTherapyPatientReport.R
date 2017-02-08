@@ -1,94 +1,110 @@
-#    This source code file is a component of the larger INSPIIRED genomic analysis software package.
-#    Copyright (C) 2016 Frederic Bushman
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License as published by
-#    the Free Software Foundation, either version 3 of the License, or
-#    (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-library(DBI, quietly=TRUE, verbose=FALSE)
-library(yaml, quietly=TRUE, verbose=FALSE)
+# Set this flag to FALSE if you are developing with an IDE such as Rstudio.
+# Command line arguments will be defined in the code below
+commandLine = FALSE
+
+
+# Set R parameters and loaded required libraries.
 options(stringsAsFactors = FALSE, useFancyQuotes=FALSE)
 
-#' set all argumentgs for the script
-#' @return list of argumentgs
-#' @example set_args()
-#'          set_args(c("--ref_genome", "mm9"))
-#' Rscript ~/geneTherapyPatientReportMaker/makeGeneTherapyPatientReport.R --ref_genome hg19 hs.csv
-#' Rscript ~/geneTherapyPatientReportMaker/makeGeneTherapyPatientReport.R --ref_genome mm9 mm.csv
-set_args <- function(...) {
-    ## arguments from command line
-    suppressMessages(library(argparse))
-    parser <- ArgumentParser(description="Gene Therapy Patient Report for Single Patient")
-    parser$add_argument("sample_gtsp", nargs='?', default='sampleName_GTSP.csv')
-    parser$add_argument("-c", default="./INSPIIRED.yml", help="path to INSPIIRED configuration file.")
-    parser$add_argument("-s", action='store_true', help="abundance by sonicLength package (Berry, C. 2012)")
-    parser$add_argument("-r", "--ref_genome", default="hg18", help="reference genome used for all samples")
-#    parser$add_argument("--sites_group", default="intsites_miseq.read", help="group to use for integration sites db from ~/.my.cnf")
-#    parser$add_argument("--gtsp_group", default="specimen_management", help="group to use for specimen management GTSP db from ~/.my.cnf")
-    parser$add_argument("--ref_seq", help="read Ref Seq genes from file")
-    parser$add_argument("-o", "--output", help='HTML and MD file names instead of Trial.Patient.Date name')
-
-    arguments <- parser$parse_args(...)
-
-    ## gene files
-    arguments$oncoGeneFile <- ""
-    if(grepl("^hg", arguments$ref_genome)) arguments$oncoGeneFile <- "allonco_no_pipes.csv"
-    if(grepl("^mm", arguments$ref_genome)) arguments$oncoGeneFile <- "allonco_no_pipes.mm.csv"
-    stopifnot( arguments$ref_genome!="" )
-    
-    ## note this file was obtained by
-    ## wget http://www.bushmanlab.org/assets/doc/humanLymph.tsv
-    ## it contains 38 gene names associated with Lymphoma
-    arguments$adverseGeneFile <- "humanLymph.tsv"
-    
-    ## code dir past to Rscript
-    codeDir <- dirname(sub("--file=", "", grep("--file=", commandArgs(trailingOnly=FALSE), value=T)))
-    if( length(codeDir)!=1 ) codeDir <- list.files(path="~", pattern="geneTherapyPatientReportMaker$", recursive=TRUE, include.dirs=TRUE, full.names=TRUE)
-    stopifnot(file.exists(file.path(codeDir, "GTSPreport.css")))
-    stopifnot(file.exists(file.path(codeDir, "GTSPreport.Rmd")))
-    stopifnot(file.exists(file.path(codeDir, arguments$oncoGeneFile)))
-    arguments$codeDir <- codeDir
-    
-    return(arguments)
+loadLibraries <- function(libs){
+  cat('Loading libraries... ')
+  null <- invisible(lapply(libs, function(x) suppressPackageStartupMessages(library(x, character.only = TRUE))))
+  cat('done.\n')
 }
-arguments <- set_args()
-print(arguments)
 
-arguments$gtsp_group
-# Load configuration file
+libs <- c( "DBI", "yaml", "RMySQL", "plyr", "dplyr", "stringr", "reshape2","scales", "ggplot2",
+           "devtools", "reldist", "hiAnnotator", "sonicLength", "intSiteRetriever", "BiocParallel",
+           "PubMedWordcloud", "markdown", "RColorBrewer", "magrittr", "knitr")
+
+null <- suppressMessages(sapply(libs, library, character.only=TRUE))
+
+
+# Parse command line arguments OR manually supply required parameters.
+if (commandLine){
+   set_args <- function(...) {
+      library(argparse)
+      parser <- ArgumentParser(description="Gene Therapy Patient Report for Single Patient")
+      parser$add_argument("sample_gtsp", nargs='?', default='sampleName_GTSP.csv')
+      parser$add_argument("-c", default="./INSPIIRED.yml", help="path to INSPIIRED configuration file.")
+      parser$add_argument("-s", action='store_true', help="abundance by sonicLength package (Berry, C. 2012)")
+      parser$add_argument("-r", "--ref_genome", default="hg18", help="reference genome used for all samples")
+      parser$add_argument("--ref_seq", help="read Ref Seq genes from file")
+      parser$add_argument("-o", "--output", help='HTML and MD file names instead of Trial.Patient.Date name')
+
+      arguments <- parser$parse_args(...)
+
+      codeDir <- dirname(sub("--file=", "", grep("--file=", commandArgs(trailingOnly=FALSE), value=T)))
+      if( length(codeDir)!=1 ) codeDir <- list.files(path="~", pattern="geneTherapyPatientReportMaker$", recursive=TRUE, include.dirs=TRUE, full.names=TRUE)
+      stopifnot(file.exists(file.path(codeDir, "GTSPreport.css")))
+      stopifnot(file.exists(file.path(codeDir, "GTSPreport.Rmd")))
+      stopifnot(file.exists(file.path(codeDir, arguments$oncoGeneFile)))
+      arguments$codeDir <- codeDir
+    
+      return(arguments)
+   }
+
+   arguments <- set_args()
+} else {
+  
+  arguments <- list()
+  arguments$ref_genome      <- 'hg18'
+  arguments$s               <- FALSE
+  arguments$codeDir         <- '/home/everett/projects/geneTherapyPatientReportMaker'
+  arguments$c               <- paste0(arguments$codeDir, '/INSPIIRED.yml')
+  arguments$sample_gtsp     <- paste0(arguments$codeDir, '/sampleName_GTSP.csv')
+}
+
+
+
+# Prepare oncogene lists.
+# The human onco gene list contains gene symbols, previous symbols and synonyms.
+# All three fields will be split on commas and combined into a single character vector.
+# The mouse gene symbols are a single list of ids that can be scanned into a vector.
+
+if(grepl("^hg", arguments$ref_genome)){
+  t <- suppressWarnings(read.table(paste0(arguments$codeDir, '/', 'allOnco.human.tsv'), 
+                                   header=TRUE, 
+                                   sep='\t', 
+                                   as.is=T, 
+                                   strip.white=T))
+  
+  oncoGenes <- toupper(unlist(apply(t, 1, function(x){
+    synonyms    <- gsub('\\s', '', unname(unlist(strsplit( x['synonyms'],    ',', fixed=TRUE))))
+    prevSymbols <- gsub('\\s', '', unname(unlist(strsplit( x['prevSymbols'], ',', fixed=TRUE))))
+    c( unname(x['symbol']), prevSymbols, synonyms )
+  })))
+}else if(grepl("^mm", arguments$ref_genome)){
+  oncoGenes <- toupper(scan(paste0(arguments$codeDir, '/', 'allOnco.mouse.list'), what='character', sep='\n', strip.white=TRUE))
+} else {
+  stop("The software only supports human and mouse ref genomes.")
+}
+  
+humanLymphGenes <- toupper(scan(paste0(arguments$codeDir, '/', 'humanLymph.list'), what='character', sep='\n', strip.white=TRUE))
+
+
+
+# Load configuration file.
+# This file contains the database connection credentials.
+
 if (!file.exists(arguments$c)) stop("the configuration file can not be found.")
 config <<- yaml.load_file(arguments$c)
 
 
-## defaults:
-use.sonicLength <-  ! arguments$s
-#db_group_sites <- arguments$sites_group
-#db_group_gtsp <- arguments$gtsp_group
-ref_genome <- arguments$ref_genome
-codeDir <- arguments$codeDir
+
+# Convert select arguments to variables in the global name space.
+use.sonicLength  <- arguments$s
+ref_genome       <- arguments$ref_genome
+codeDir          <- arguments$codeDir
 ref_seq_filename <- arguments$ref_seq
 
-#### INPUTS: csv file/table GTSP to sampleName ####
-csvfile <- arguments$sample_gtsp
-
+csvfile          <- arguments$sample_gtsp
 if( !file.exists(csvfile) ) stop(csvfile, "not found")
 
-#### load up require packages + objects #### 
-libs <- c("RMySQL", "plyr", "dplyr", "stringr", "reshape2",
-          "scales", "ggplot2", "devtools", "reldist",
-          "hiAnnotator", "sonicLength", "intSiteRetriever",
-          "BiocParallel", "PubMedWordcloud", "markdown",
-          "RColorBrewer", "magrittr", "knitr")
-null <- suppressMessages(sapply(libs, library, character.only=TRUE))
+
+
+
+# Source required files.
 
 R_source_files <- c("utilities.R", "estimatedAbundance.R", "read_site_totals.R", "ref_seq.R",
                     "populationInfo.R", "abundanceFilteringUtils.R")
@@ -99,7 +115,9 @@ url <- "https://raw.githubusercontent.com/BushmanLab/intSiteCaller/master/"
 source_url(paste0(url, "hiReadsProcessor.R"))
 source_url(paste0(url, "standardization_based_on_clustering.R"))
 
-#### load datasets and process them before knit #### 
+
+
+# Read in and check sample file.
 message("\nReading csv from ", csvfile)
 sampleName_GTSP <- read.csv(csvfile)
 stopifnot(all(c("sampleName", "GTSP") %in% colnames(sampleName_GTSP)))
@@ -107,33 +125,39 @@ sampleName_GTSP$refGenome <- ref_genome
 message("\nGenerating report from the following sets")
 print(sampleName_GTSP)
 
+
+
 # Connect to my database
 if (config$dataBase == 'mysql'){
    stopifnot(file.exists("~/.my.cnf"))
-   dbConn <- dbConnect(MySQL(), group=config$mysqlConnectionGroup)
-   info <- dbGetInfo(dbConn)
-   dbConn <- src_sql("mysql", dbConn, info = info)
+   dbConn0 <- dbConnect(MySQL(), group=config$mysqlConnectionGroup)
+   info <- dbGetInfo(dbConn0)
+   dbConn <- src_sql("mysql", dbConn0, info = info)
    dbConnSampleManagemnt <-  dbConnect(MySQL(), group=config$mysqlSpecimenManagementGroup)
 }else if (config$dataBase == 'sqlite') {
-   dbConn <- dbConnect(RSQLite::SQLite(), dbname=config$sqliteIntSitesDB)
-   info <- dbGetInfo(dbConn)
-   dbConn <- src_sql("sqlite", dbConn, info = info)
+   dbConn0 <- dbConnect(RSQLite::SQLite(), dbname=config$sqliteIntSitesDB)
+   info <- dbGetInfo(dbConn0)
+   dbConn <- src_sql("sqlite", dbConn0, info = info)
    dbConnSampleManagemnt <- dbConnect(RSQLite::SQLite(), dbname=config$sqliteSampleManagement)
 } else { stop('Can not establish a connection to the database') }
 
+
+
+# Check samples against the datbase.
 if( !all(setNameExists(sampleName_GTSP, dbConn)) ) {
     sampleNameIn <- paste(sprintf("'%s'", sampleName_GTSP$sampleName), collapse=",")
 
     q <- sprintf("SELECT * FROM samples WHERE sampleName IN (%s)", sampleNameIn)
     message("\nChecking database:\n",q,"\n")
 
-    t <- dbSendQuery(con, q)
+    t <- dbSendQuery0(con, q)
     write.table(t)
 
     stop("Was --ref_genome specified correctly or did query return all entries")
    } else {
     message("All samples are in DB.")
-}
+   }
+
 
 read_sites_sample_GTSP <- get_read_site_totals(sampleName_GTSP, dbConn)
 
@@ -292,11 +316,8 @@ standardizedDereplicatedSites <- getSitesInFeature(standardizedDereplicatedSites
                                                    colnam="inGene",
                                                    feature.colnam="name2")
 
-#oncogenes
-oncogenes <- scan(file= file.path(codeDir, arguments$oncoGeneFile), what='character')
-oncogenes <- oncogenes[!grepl("geneName", oncogenes, ignore.case=TRUE)]
 
-refSeq_oncogene <- refSeq_genes[toupper(refSeq_genes$name2) %in% toupper(oncogenes)]
+refSeq_oncogene <- refSeq_genes[toupper(refSeq_genes$name2) %in% toupper(oncoGenes)]
 
 standardizedDereplicatedSites <- getNearestFeature(standardizedDereplicatedSites,
                                                    refSeq_oncogene,
@@ -305,47 +326,84 @@ standardizedDereplicatedSites <- getNearestFeature(standardizedDereplicatedSites
                                                    feature.colnam="name2")
 
 
-wantedgenes <- as.character(
-    read.csv(file.path(codeDir, arguments$adverseGeneFile),
-             sep="\t",
-             header=TRUE)$symbol)
-stopifnot(length(wantedgenes)>=1)
+
+standardizedDereplicatedSites.Save <- standardizedDereplicatedSites
+standardizedDereplicatedSites$nearest_refSeq_gene <- gsub('KDM2A', 'SUZ12,RB1', standardizedDereplicatedSites$nearest_refSeq_gene)
+
 
 ## * in transcription units
 ## ~ within 50kb of a onco gene 
 ## ! nearest is a known bad gene 
 standardizedDereplicatedSites$geneMark <- ""
 
-## ~ nearest is a known bad gene 
-isNearWanted <- standardizedDereplicatedSites$nearest_refSeq_gene %in% wantedgenes 
-isInWanted <- sapply( standardizedDereplicatedSites$inGene,
-                     function(txt) any(unlist(strsplit(txt, ',')) %in% wantedgenes) )
+## ! nearest is a known bad gene 
+
+isNearWanted <- unlist(lapply(standardizedDereplicatedSites$nearest_refSeq_gene,
+                              function(txt){ any(toupper(unlist(strsplit(txt, ','))) %in% toupper(humanLymphGenes)) }))
+
+isInWanted <- unlist(lapply(standardizedDereplicatedSites$inGene,
+                            function(txt){ any(toupper(unlist(strsplit(txt, ','))) %in% toupper(humanLymphGenes)) }))
+
 standardizedDereplicatedSites$geneMark <- ifelse(
     isNearWanted | isInWanted,
     paste0(standardizedDereplicatedSites$geneMark, "!"),
     standardizedDereplicatedSites$geneMark )
 
-## ~ within 50kb of a onco gene 
-isNearOnco <- (standardizedDereplicatedSites$nearest_refSeq_gene %in% oncogenes &
-               abs(standardizedDereplicatedSites$nearest_refSeq_geneDist) < 50000 )
-isInOnco <- sapply( standardizedDereplicatedSites$inGene,
-                   function(txt) any(unlist(strsplit(txt, ',')) %in% oncogenes) )
+
+
+
+
+# ~ within 50kb of a onco gene 
+isNearOnco <- unname(unlist(mapply(function(gene, dist){
+  any(toupper(unlist(strsplit(gene, ','))) %in% toupper(oncoGenes)) & abs(dist) < 50000
+}, standardizedDereplicatedSites$nearest_refSeq_gene, standardizedDereplicatedSites$nearest_refSeq_geneDist)))
+
+isInOnco <- unlist(lapply(standardizedDereplicatedSites$inGene,
+                          function(txt) any(toupper(unlist(strsplit(txt, ','))) %in% toupper(oncoGenes))))
+
 standardizedDereplicatedSites$geneMark <- ifelse(
     isNearOnco | isInOnco,
     paste0(standardizedDereplicatedSites$geneMark, "~"),
     standardizedDereplicatedSites$geneMark )
 
-## * in transcription units
+
+# * in transcription units
 standardizedDereplicatedSites$geneMark <- ifelse(
     toupper(standardizedDereplicatedSites$inGene)!="FALSE",
     paste0(standardizedDereplicatedSites$geneMark, "*"),
     standardizedDereplicatedSites$geneMark)
 
-## attach gene marks
+
+# There will be instances where a comma delimited list of gene names are used by
+# nearest_refSeq_gene. Go through each gene name, if 1 or more in the humanLymphGenes list
+# then use those names. If not , check the oncoGenes. If none of the genes are in either of 
+# those two lists, just use the first name in the list.
+
+# Create a vector of gene names from each comma delimited gene name string.
+
+geneLabels <- lapply(standardizedDereplicatedSites$nearest_refSeq_gene, function(x){
+   g <- toupper(unlist(strsplit(x, ',', fixed = TRUE)))
+  
+   if (any(g %in% toupper(humanLymphGenes))){
+      r <- paste0(g[g %in% toupper(humanLymphGenes)], collapse=',')
+   } else if (any(g %in% toupper(oncoGenes))){
+      r <- paste0(g[g %in% toupper(oncoGenes)], collapse=',')
+   } else {
+      r <- g[1]
+   }
+
+   r
+})
+
+standardizedDereplicatedSites$nearest_refSeq_gene <- geneLabels
+
+
+# attach gene marks
 standardizedDereplicatedSites$nearest_refSeq_gene <- paste0(
     standardizedDereplicatedSites$nearest_refSeq_gene,
     standardizedDereplicatedSites$geneMark)
 
+   
 #===================GENERATE EXPANDED CLONE DATAFRAMES======================
 standardizedDereplicatedSamples <- split(
   standardizedDereplicatedSites, 
@@ -373,11 +431,42 @@ barplotAbundsBySample <- lapply(1:length(standardizedDereplicatedSamples), funct
   getAbundanceSums(maskGenes(sites, genes), c("CellType", "Timepoint"))
 })
 
+
+
+order_barplot <- function(df){
+  df$timepointCelltype <- paste0(df$Timepoint, '/', df$CellType)
+  df <- do.call("rbind", by(df, df$timepointCelltype, function(x){
+    a <- x[grepl('LowAbund', x$maskedRefGeneName),]
+    b <- x[!grepl('LowAbund', x$maskedRefGeneName),]
+    b <- b[order(b$estAbund, decreasing=TRUE),]
+    rbind(a,b)
+  }))
+  df$timepointCelltype <- NULL
+  df
+} 
+
+
 barplotAbunds <- bind_rows(lapply(barplotAbunds, order_barplot))
 barplotAbundsBySample <- bind_rows(lapply(barplotAbundsBySample, order_barplot))
+
 CellType_order <- unique(standardizedDereplicatedSites$CellType)
 barplotAbunds$CellType <- factor(barplotAbunds$CellType, levels=CellType_order)
 barplotAbundsBySample$CellType <- factor(barplotAbundsBySample$CellType, levels=CellType_order)
+
+barplotAbunds$maskedRefGeneName <- factor(barplotAbunds$maskedRefGeneName,
+                                          levels=unique(barplotAbunds$maskedRefGeneName))
+
+if ('LowAbund' %in% levels(barplotAbunds$maskedRefGeneName)){
+  barplotAbunds$maskedRefGeneName <- relevel(barplotAbunds$maskedRefGeneName, 'LowAbund')
+}
+
+barplotAbundsBySample$maskedRefGeneName <- factor(barplotAbundsBySample$maskedRefGeneName,
+                                                  levels=unique(barplotAbundsBySample$maskedRefGeneName))
+
+if ('LowAbund' %in% levels(barplotAbundsBySample$maskedRefGeneName)){
+  barplotAbundsBySample$maskedRefGeneName <- relevel(barplotAbundsBySample$maskedRefGeneName, 'LowAbund')
+}
+
 
 #detailed abundance plot
 cutoff_genes <- getMostAbundantGenes(standardizedDereplicatedSites, 50)
