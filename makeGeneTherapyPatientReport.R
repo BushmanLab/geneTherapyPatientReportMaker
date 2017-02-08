@@ -379,9 +379,7 @@ standardizedDereplicatedSites$geneMark <- ifelse(
 # then use those names. If not , check the oncoGenes. If none of the genes are in either of 
 # those two lists, just use the first name in the list.
 
-# Create a vector of gene names from each comma delimited gene name string.
-
-geneLabels <- lapply(standardizedDereplicatedSites$nearest_refSeq_gene, function(x){
+geneLabels <- unlist(lapply(standardizedDereplicatedSites$nearest_refSeq_gene, function(x){
    g <- toupper(unlist(strsplit(x, ',', fixed = TRUE)))
   
    if (any(g %in% toupper(humanLymphGenes))){
@@ -393,7 +391,7 @@ geneLabels <- lapply(standardizedDereplicatedSites$nearest_refSeq_gene, function
    }
 
    r
-})
+}))
 
 standardizedDereplicatedSites$nearest_refSeq_gene <- geneLabels
 
