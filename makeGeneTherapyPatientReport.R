@@ -1,7 +1,9 @@
-
+{
 # Set this flag to FALSE if you are developing with an IDE such as Rstudio.
-# Command line arguments will be defined in the code below
+# Command line arguments will be defined in the code below.
 commandLine = FALSE
+
+
 
 
 # Set R parameters and loaded required libraries.
@@ -18,6 +20,9 @@ libs <- c( "DBI", "yaml", "RMySQL", "plyr", "dplyr", "stringr", "reshape2","scal
            "PubMedWordcloud", "markdown", "RColorBrewer", "magrittr", "knitr")
 
 null <- suppressMessages(sapply(libs, library, character.only=TRUE))
+
+
+
 
 
 # Parse command line arguments OR manually supply required parameters.
@@ -45,6 +50,10 @@ if (commandLine){
    }
 
    arguments <- set_args()
+   
+   if (!file.exists(arguments$c)) stop("The configuration file can not be found.")
+   config <- yaml.load_file(arguments$c)
+   
 } else {
   
   arguments <- list()
@@ -53,6 +62,12 @@ if (commandLine){
   arguments$codeDir         <- '/home/everett/projects/geneTherapyPatientReportMaker'
   arguments$c               <- paste0(arguments$codeDir, '/INSPIIRED.yml')
   arguments$sample_gtsp     <- paste0(arguments$codeDir, '/sampleName_GTSP.csv')
+  arguments$ref_seq         <- paste0(arguments$codeDir, '/refSeq.rds')
+  
+  config <- list()
+  config$dataBase <-  'mysql'
+  config$mysqlConnectionGroup <- 'intsites_miseq'
+  config$mysqlSpecimenManagementGroup <- 'specimen_management'
 }
 
 
@@ -84,32 +99,30 @@ humanLymphGenes <- toupper(scan(paste0(arguments$codeDir, '/', 'humanLymph.list'
 
 
 
-# Load configuration file.
-# This file contains the database connection credentials.
 
-if (!file.exists(arguments$c)) stop("the configuration file can not be found.")
-config <<- yaml.load_file(arguments$c)
+# Read in and check sample file.
+if( !file.exists(arguments$sample_gtsp) ) stop(paste0(arguments$sample_gtsp, " not found"))
+message("\nReading csv from ", arguments$sample_gtsp)
+sampleName_GTSP <- read.csv(arguments$sample_gtsp)
+stopifnot(all(c("sampleName", "GTSP") %in% colnames(sampleName_GTSP)))
+sampleName_GTSP$refGenome <- arguments$ref_genome
+message("\nGenerating report from the following sets")
+print(sampleName_GTSP)
 
 
+# Throw an error if the expexted columns are not in the provided CSV file.
+# Throw an error if more than one GTSP has the same patient / cell type / timepoint combination.
 
-# Convert select arguments to variables in the global name space.
-use.sonicLength  <- arguments$s
-ref_genome       <- arguments$ref_genome
-codeDir          <- arguments$codeDir
-ref_seq_filename <- arguments$ref_seq
-
-csvfile          <- arguments$sample_gtsp
-if( !file.exists(csvfile) ) stop(csvfile, "not found")
-
+#stopifnot(all(c('sampleName', 'GTSP', 'patient', 'celltype', 'timepoint') %in% colnames(sampleName_GTSP)))
+#stopifnot(length(unique(sampleName_GTSP$GTSP)) == nrow(unique(sampleName_GTSP[, c('patient', 'celltype', 'timepoint')])))
 
 
 
 # Source required files.
-
 R_source_files <- c("utilities.R", "estimatedAbundance.R", "read_site_totals.R", "ref_seq.R",
                     "populationInfo.R", "abundanceFilteringUtils.R")
 
-null <- sapply(R_source_files, function(x) source(file.path(codeDir, x)))
+null <- sapply(R_source_files, function(x) source(file.path(arguments$codeDir, x)))
 
 url <- "https://raw.githubusercontent.com/BushmanLab/intSiteCaller/master/"
 source_url(paste0(url, "hiReadsProcessor.R"))
@@ -117,19 +130,11 @@ source_url(paste0(url, "standardization_based_on_clustering.R"))
 
 
 
-# Read in and check sample file.
-message("\nReading csv from ", csvfile)
-sampleName_GTSP <- read.csv(csvfile)
-stopifnot(all(c("sampleName", "GTSP") %in% colnames(sampleName_GTSP)))
-sampleName_GTSP$refGenome <- ref_genome
-message("\nGenerating report from the following sets")
-print(sampleName_GTSP)
-
-
 
 # Connect to my database
 if (config$dataBase == 'mysql'){
    stopifnot(file.exists("~/.my.cnf"))
+   sapply(dbListConnections(MySQL()), dbDisconnect)
    dbConn0 <- dbConnect(MySQL(), group=config$mysqlConnectionGroup)
    info <- dbGetInfo(dbConn0)
    dbConn <- src_sql("mysql", dbConn0, info = info)
@@ -140,6 +145,7 @@ if (config$dataBase == 'mysql'){
    dbConn <- src_sql("sqlite", dbConn0, info = info)
    dbConnSampleManagemnt <- dbConnect(RSQLite::SQLite(), dbname=config$sqliteSampleManagement)
 } else { stop('Can not establish a connection to the database') }
+
 
 
 
@@ -154,9 +160,10 @@ if( !all(setNameExists(sampleName_GTSP, dbConn)) ) {
     write.table(t)
 
     stop("Was --ref_genome specified correctly or did query return all entries")
-   } else {
+} else {
     message("All samples are in DB.")
-   }
+}
+
 
 
 read_sites_sample_GTSP <- get_read_site_totals(sampleName_GTSP, dbConn)
@@ -209,6 +216,8 @@ sets$Timepoint <- sortFactorTimepoints(sets$Timepoint)
 stopifnot(length(unique(sampleName_GTSP$refGenome))==1)
 freeze <- sampleName_GTSP[1, "refGenome"]
 
+
+
 ##==========GET AND PERFORM BASIC DEREPLICATION/SONICABUND ON SITES=============
 message("Fetching unique sites and estimating abundance")
 
@@ -247,7 +256,7 @@ standardizedReplicatedSites <- lapply(standardizedReplicatedSites, function(x){
 standardizedReplicatedSites <- standardizedReplicatedSites[sapply(standardizedReplicatedSites, length)>0]
 
 standardizedDereplicatedSites <- lapply(standardizedReplicatedSites, function(sites){
-    res <- getEstimatedAbundance(sites, use.sonicLength = use.sonicLength)
+    res <- getEstimatedAbundance(sites, use.sonicLength = arguments$s)
     res$GTSP <- sites[1]$GTSP
     res$posid <- paste0(seqnames(res), strand(res), start(flank(res, -1, start=T)))
     res
@@ -296,9 +305,7 @@ timepointPopulationInfo$UniqueSites <- sapply(split(standardizedDereplicatedSite
 #=======================ANNOTATE DEREPLICATED SITES==========================
 #standard refSeq genes
 message("Annotating unique hit sites")
-refSeq_genes <- read_ref_seq(ref_seq_filename)
-
-save.image(RDataFile)
+refSeq_genes <- read_ref_seq(arguments$ref_seq)
 
 standardizedDereplicatedSites <- getNearestFeature(standardizedDereplicatedSites,
                                                    refSeq_genes,
@@ -324,12 +331,6 @@ standardizedDereplicatedSites <- getNearestFeature(standardizedDereplicatedSites
                                                    colnam="NrstOnco",
                                                    side="5p",
                                                    feature.colnam="name2")
-
-
-
-standardizedDereplicatedSites.Save <- standardizedDereplicatedSites
-standardizedDereplicatedSites$nearest_refSeq_gene <- gsub('KDM2A', 'SUZ12,RB1', standardizedDereplicatedSites$nearest_refSeq_gene)
-
 
 ## * in transcription units
 ## ~ within 50kb of a onco gene 
@@ -564,9 +565,6 @@ if( nrow(sites.multi) > 0 ) {
 }
 
 
-save.image(RDataFile)
-##end setting variables for markdown report
-
 fig.path <- paste(unique(trial), unique(patient),
                   format(Sys.Date(), format="%Y%m%d"), "Figures",
                   sep=".")
@@ -584,12 +582,12 @@ if ( ! is.null(arguments$output)) {
 htmlfile <- gsub("\\.md$",".html",mdfile)
 options(knitr.table.format='html')
 theme_set(theme_bw()) #for ggplot2
-knit(file.path(codeDir, "GTSPreport.Rmd"), output=mdfile)
+knit(file.path(arguments$codeDir, "GTSPreport.Rmd"), output=mdfile)
 markdownToHTML(mdfile, htmlfile, extensions=c('tables'),
                options=c(markdownHTMLOptions(defaults=T), "toc"),
-               stylesheet=file.path(codeDir, "GTSPreport.css") )
+               stylesheet=file.path(arguments$codeDir, "GTSPreport.css") )
 
 
-message("\nReport ", htmlfile, " is generated from ", csvfile)
+message("\nReport ", htmlfile, " is generated from ", arguments$sample_gtsp)
 save.image(RDataFile)
-
+}

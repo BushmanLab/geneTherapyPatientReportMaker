@@ -1,56 +1,58 @@
-#    This source code file is a component of the larger INSPIIRED genomic analysis software package.
-#    Copyright (C) 2016 Frederic Bushman
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License as published by
-#    the Free Software Foundation, either version 3 of the License, or
-#    (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 
 getEstimatedAbundance <- function(sites, use.sonicLength=FALSE){
-  #inputs at this point have been standardized, so it's ok to use posid as PK
-  if(use.sonicLength){
-    estAbund.uniqueFragLen <- function(location, fragLen, replicate=NULL){
-      if(is.null(replicate)){replicate <- 1}  #Need for downstream workflow
-      dfr <- data.frame(location = location, fragLen = fragLen, 
-                      replicate = replicate)
-      dfr_dist <- distinct(dfr)
-      site_list <- split(dfr_dist, dfr_dist$location)
-      theta <- sapply(site_list, function(x){nrow(x)})
-      theta <- theta[unique(dfr$location)]
-      list(theta=theta)
-    }
-    estAbund <- estAbund.uniqueFragLen
-  }
   
-  sites$posid = paste0(seqnames(sites), strand(sites), start(flank(sites, -1, start=T)))
-  dfr <- data.frame("ID"=sites$posid,
-                    "fragLength"=width(sites),
-                    "replicate"=sites$replicate)
+  if (use.sonicLength){
+     sites$posid = paste0(seqnames(sites), strand(sites), start(flank(sites, -1, start=T)))
+     dfr <- data.frame("ID"=sites$posid,
+                       "fragLength"=width(sites),
+                       "replicate"=sites$replicate)
   
-  #sonic abundance will crash if given a vector of replicates with one value
-  if(length(unique(dfr$replicate)) == 1){
-    estimatedAbundances <- estAbund(dfr$ID, dfr$fragLength)
-  }else{
-    estimatedAbundances <- estAbund(dfr$ID, dfr$fragLength, dfr$replicate)
-  }
+     # Sonic abundance will crash if given a vector of replicates with one value
+     if(length(unique(dfr$replicate)) == 1){
+       estimatedAbundances <- estAbund(dfr$ID, dfr$fragLength)
+     }else{
+       estimatedAbundances <- estAbund(dfr$ID, dfr$fragLength, dfr$replicate)
+     }
   
-  dereplicatedSites = granges(dereplicateSites(sites)) #instead of mcols()=NULL
+     dereplicatedSites = granges(dereplicateSites(sites)) #instead of mcols()=NULL
 
-  #regenerate posid which is guaranteed to match since the input data was
-  #already run through the dereplicator
-  dereplicatedSites$posid = paste0(seqnames(dereplicatedSites),
-                                   strand(dereplicatedSites),
-                                   start(flank(dereplicatedSites, -1, start=T)))
-  
-  dereplicatedSites$estAbund <- round(estimatedAbundances$theta) #estAbund preserves order
+     # Regenerate posid which is guaranteed to match since the input data was already run through the dereplicator
+     dereplicatedSites$posid = paste0(seqnames(dereplicatedSites),
+                                      strand(dereplicatedSites),
+                                      start(flank(dereplicatedSites, -1, start=T)))
+     
+     dereplicatedSites$estAbund <- round(estimatedAbundances$theta) #estAbund preserves order
+  } else {
+    
+    # Convert the GRanges to a data frame.
+    # The strandedness of the range determines which position is the integration site and which is the breakpoint.
+    df <- rbind.fill(
+      lapply(split(sites, as.vector(strand(sites))), function(x){
+        if (as.vector(strand(x[1])) == '+'){
+          d <- data.frame(seqnames=as.vector(seqnames(x)), strand=as.vector(strand(x)), intSite=start(x), breakPoints=end(x), GTSP=x$GTSP)
+        } else {
+          d <- data.frame(seqnames=as.vector(seqnames(x)), strand=as.vector(strand(x)), intSite=end(x), breakPoints=start(x), GTSP=x$GTSP)
+        }
+        d
+      }))
+    
+    df$posid <- paste0(df$seqnames, df$strand, df$intSite)
+    df$samplePosid <- paste0(df$GTSP, '/', df$posid)
+    
+    # Aggregate the data frame on intSites while counting both the number of reads and unique fragments.
+    df2 <- rbind.fill(by(df, df$samplePosid, function(x){
+      x$reads <- nrow(x)
+      aggregate(breakPoints ~ intSite+GTSP+seqnames+strand+reads, FUN=function(x){ length(unique(x)) }, data=x)
+    }))
+    
+    # Convert data frame back to a GRange object
+    dereplicatedSites <- GRanges(seqnames=df2$seqnames, strand=df2$strand, ranges= IRanges(start=df2$intSite, end=df2$intSite), GTSP=df2$GTSP, reads=df2$reads, breakPoints=df2$breakPoints)
+    
+    # Set the default estAbund to the number of reads
+    dereplicatedSites$estAbund <- dereplicatedSites$breakPoints
+  }
+
   dereplicatedSites$estAbundProp <- dereplicatedSites$estAbund/sum(dereplicatedSites$estAbund)
   dereplicatedSites$estAbundRank <- rank(-1*dereplicatedSites$estAbundProp, ties.method="max")
   
