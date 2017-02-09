@@ -113,8 +113,8 @@ print(sampleName_GTSP)
 # Throw an error if the expexted columns are not in the provided CSV file.
 # Throw an error if more than one GTSP has the same patient / cell type / timepoint combination.
 
-#stopifnot(all(c('sampleName', 'GTSP', 'patient', 'celltype', 'timepoint') %in% colnames(sampleName_GTSP)))
-#stopifnot(length(unique(sampleName_GTSP$GTSP)) == nrow(unique(sampleName_GTSP[, c('patient', 'celltype', 'timepoint')])))
+stopifnot(all(c('sampleName', 'GTSP', 'patient', 'celltype', 'timepoint') %in% colnames(sampleName_GTSP)))
+stopifnot(length(unique(sampleName_GTSP$GTSP)) == nrow(unique(sampleName_GTSP[, c('patient', 'celltype', 'timepoint')])))
 
 
 
