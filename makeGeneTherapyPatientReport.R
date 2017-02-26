@@ -127,7 +127,7 @@ if( !all(setNameExists(sampleName_GTSP, dbConn)) ) {
     q <- sprintf("SELECT * FROM samples WHERE sampleName IN (%s)", sampleNameIn)
     message("\nChecking database:\n",q,"\n")
 
-    t <- dbSendQuery(con, q)
+    t <- dbSendQuery(dbConn, q)
     write.table(t)
 
     stop("Was --ref_genome specified correctly or did query return all entries")
