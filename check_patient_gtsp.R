@@ -17,7 +17,7 @@
 library("methods", quietly=TRUE)
 library("RMySQL", quietly = TRUE) #also loads DBI
 
-SPECIMEN_MANAGEMENT <- "specimen_management_2"
+SPECIMEN_MANAGEMENT <- "specimen_management"
 
 junk <- sapply(dbListConnections(MySQL()), dbDisconnect)
 dbConn <- dbConnect(MySQL(), group=SPECIMEN_MANAGEMENT)
@@ -27,7 +27,7 @@ sql <- "select trial, patient, CellType, Timepoint, SpecimenAccNum from specimen
 trial_pat_gtsp <- dbGetQuery(dbConn,sql)
 names(trial_pat_gtsp) <- tolower(names(trial_pat_gtsp))
 
-INTSITES_GROUP <- "gt_intsites.database"
+INTSITES_GROUP <- "intsites_miseq"
 
 junk <- sapply(dbListConnections(MySQL()), dbDisconnect)
 dbConn <- dbConnect(MySQL(), group=INTSITES_GROUP)

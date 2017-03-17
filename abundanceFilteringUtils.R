@@ -48,6 +48,8 @@ getAbundanceSums <- function(sites, splitBy){
   splitBy <- mcols(sites)[,splitBy]
   splitSites <- split(sites, apply(as.data.frame(splitBy), 1, paste, collapse=""))
   
+  ###browser()
+  
   do.call(rbind, lapply(splitSites, function(sites){
     res <- aggregate(estAbundProp ~ maskedRefGeneName, mcols(sites), sum)
     est <- aggregate(estAbund ~ maskedRefGeneName, mcols(sites), sum)

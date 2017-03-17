@@ -182,8 +182,10 @@ ggplot(data=barplotAbunds, aes(Timepoint, estAbund, fill=maskedRefGeneName)) +
   scale_y_continuous(labels = scales::comma)  +
   theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1),
     panel.background = element_rect(fill = "white"),
-    panel.border = element_rect(colour = "grey", fill=NA, size=0.5)
-  )
+    panel.border = element_rect(colour = "grey", fill=NA, size=0.5),
+    legend.key.size = unit(0.33, "in")
+  ) 
+      
 ```
 
 ***
@@ -210,7 +212,8 @@ grid.arrange(
       scale_y_continuous(labels=percent)  +
       theme(axis.text.x=element_text(angle=45, hjust=1, vjust=1),
           panel.background = element_rect(fill = "white"),
-          panel.border = element_rect(colour = "grey", fill=NA, size=0.5))
+          panel.border = element_rect(colour = "grey", fill=NA, size=0.5),
+          legend.key.size = unit(0.33, "in"))
     ggplotGrob(plot)
   }),
   ncol = 3,
@@ -228,6 +231,13 @@ ncols_plot <- ifelse(
   n_cell_types)
 ```
 ```{r sitetype_heatmap, fig.width=2*ncols_plot+2, fig.height=10*(1+as.integer((n_cell_types-0.1)/6))}
+
+# Remove position information
+detailedAbunds$maskedRefGeneName <- gsub('\\n', ' ', detailedAbunds$maskedRefGeneName)
+detailedAbunds$maskedRefGeneName <- factor(detailedAbunds$maskedRefGeneName)
+detailedAbunds$maskedRefGeneName <- relevel(detailedAbunds$maskedRefGeneName, 'LowAbund')
+detailedAbunds$maskedRefGeneName <- factor(detailedAbunds$maskedRefGeneName, levels=rev(levels(detailedAbunds$maskedRefGeneName)))
+
 ggplot(data=detailedAbunds, aes(Timepoint, maskedRefGeneName, fill=estAbundProp)) + geom_tile() +
   scale_fill_continuous(name='Relative\nAbundance', labels=percent, low="#E5F5E0", high="#2B8CBE") +
   facet_wrap(~CellType, scales="free_x", ncol=ncols_plot) + labs(y="SiteType", x="Timepoint") +
@@ -289,11 +299,18 @@ The word clouds below show the abundances of integration sites as designated by 
 ```{r wordlelist, fig.width=4, fig.height=4, fig.show='hide'}
 if(! require('PubMedWordcloud')) stop("Need PubMedWordcloud package")
 df <- as.data.frame(standardizedDereplicatedSites)
+
+# Remove position information
+df$nearest_refSeq_gene <-   gsub('\\n.*', '', df$nearest_refSeq_gene)
+
 df <- data.frame(
 	Timepoint=df$Timepoint,
     CellType=factor(df$CellType, levels=CellType_order),
 	word=df$nearest_refSeq_gene,
     freq=df$estAbund)
+
+
+
 df <- arrange(df, CellType, Timepoint)
 df.wordlist <- split(df, f=paste(df$Timepoint, df$CellType))
 df.wordlist <- df.wordlist[unique(paste(df$Timepoint, df$CellType))]

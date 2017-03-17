@@ -1,0 +1,3 @@
+dataBase : mysql
+mysqlConnectionGroup : intsites_miseq
+mysqlSpecimenManagementGroup : specimen_management
