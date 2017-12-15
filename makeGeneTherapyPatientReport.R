@@ -14,6 +14,9 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+codeDir <- dirname(sub("--file=", "", grep("--file=", commandArgs(trailingOnly=FALSE), value=T)))
+source(file.path(codeDir,'supp.R'))
+
 library(DBI, quietly=TRUE, verbose=FALSE)
 library(yaml, quietly=TRUE, verbose=FALSE)
 options(stringsAsFactors = FALSE, useFancyQuotes=FALSE)
@@ -85,7 +88,7 @@ if( !file.exists(csvfile) ) stop(csvfile, "not found")
 #### load up require packages + objects #### 
 libs <- c("RMySQL", "plyr", "dplyr", "stringr", "reshape2",
           "scales", "ggplot2", "devtools", "reldist",
-          "hiAnnotator", "sonicLength", "intSiteRetriever",
+          "hiAnnotator", "sonicLength",
           "BiocParallel", "PubMedWordcloud", "markdown",
           "RColorBrewer", "magrittr", "knitr")
 null <- suppressMessages(sapply(libs, library, character.only=TRUE))
@@ -95,9 +98,9 @@ R_source_files <- c("utilities.R", "estimatedAbundance.R", "read_site_totals.R",
 
 null <- sapply(R_source_files, function(x) source(file.path(codeDir, x)))
 
-url <- "https://raw.githubusercontent.com/BushmanLab/intSiteCaller/master/"
-source_url(paste0(url, "hiReadsProcessor.R"))
-source_url(paste0(url, "standardization_based_on_clustering.R"))
+### url <- "https://raw.githubusercontent.com/BushmanLab/intSiteCaller/master/"
+### source_url(paste0(url, "hiReadsProcessor.R"))
+### source_url(paste0(url, "standardization_based_on_clustering.R"))
 
 #### load datasets and process them before knit #### 
 message("\nReading csv from ", csvfile)
