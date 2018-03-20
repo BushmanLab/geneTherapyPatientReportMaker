@@ -39,8 +39,12 @@ set_args <- function(...) {
     parser$add_argument("--ref_seq", help="read Ref Seq genes from file")
     parser$add_argument("--output", help='HTML and MD file names instead of Trial.Patient.Date name')
 
-    arguments <- parser$parse_args(...)
-
+    #arguments <- parser$parse_args(...)
+    # Debug lines
+    cmdline <- "-c ~/INSPIIRED/INSPIIRED.yml -r hg38 -d ~/data/projects/Ho_HIV/20180220_Ho_HIV/output_data -i ~/data/projects/Ho_HIV/sampleInfo/180220.sampleInfo.csv --ref_seq ~/data/util_files/hg38.refSeq.rds --output ~/data/projects/Ho_HIV/20180220_Ho_HIV/output_data"
+    cmdline <- unlist(strsplit(cmdline, " "))
+    arguments <- parser$parse_args(cmdline)
+    
     ## gene files
     arguments$oncoGeneFile <- ""
     if(grepl("^hg", arguments$ref_genome)) arguments$oncoGeneFile <- "allonco_no_pipes.csv"
@@ -54,6 +58,8 @@ set_args <- function(...) {
     
     ## code dir past to Rscript
     codeDir <- dirname(sub("--file=", "", grep("--file=", commandArgs(trailingOnly=FALSE), value=T)))
+    #Debug line
+    codeDir <- "~/INSPIIRED/components/geneTherapyPatientReportMaker"
     if( length(codeDir)!=1 ) codeDir <- list.files(path="~", pattern="geneTherapyPatientReportMaker$", recursive=TRUE, include.dirs=TRUE, full.names=TRUE)
     stopifnot(file.exists(file.path(codeDir, "GTSPreport.css")))
     stopifnot(file.exists(file.path(codeDir, "GTSPreport.Rmd")))
@@ -82,9 +88,9 @@ infoPath <- arguments$specimen_info
 ref_seq_filename <- arguments$ref_seq
 
 #### INPUTS: csv file/table GTSP to sampleName ####
-csvfile <- arguments$sample_gtsp
+#csvfile <- arguments$sample_gtsp
 
-if( !file.exists(csvfile) ) stop(csvfile, "not found")
+#if( !file.exists(csvfile) ) stop(csvfile, "not found")
 
 #### load up require packages + objects #### 
 libs <- c("RMySQL", "plyr", "dplyr", "stringr", "reshape2",
@@ -105,7 +111,11 @@ source_url(paste0(url, "standardization_based_on_clustering.R"))
 
 #### load datasets and process them before knit #### 
 message("\nReading csv from ", csvfile)
-sampleName_GTSP <- read.csv(csvfile)
+sampleInfo <- read.csv(arguments$specimen_info)
+#sampleName_GTSP <- read.csv(csvfile)
+sampleName_GTSP <- data.frame(
+  "sampleName" = sampleInfo$sampleName,
+  "GTSP" = stringr::str_extract(sampleInfo$sampleName, "[\\w]+"))
 stopifnot(all(c("sampleName", "GTSP") %in% colnames(sampleName_GTSP)))
 sampleName_GTSP$refGenome <- ref_genome
 message("\nGenerating report from the following sets")
@@ -113,50 +123,76 @@ print(sampleName_GTSP)
 
 ##Load data if not using intSites database##
 if( length(dataDir)>0 ){    
-    sampleDir <- paste0(dataDir, sampleName_GTSP$sampleName)
-    uniqueSamples <- lapply(sampleDir, function(path){
-        uniq_file <- file.path(path, "allSites.RData")
-        if( file.exists(uniq_file) ){
-          load(uniq_file)
-        }else{
-          allSites <- GRanges()
-        }
-        allSites
-    })
-    names(uniqueSamples) <- sampleName_GTSP$sampleName
+    #sampleDir <- paste0(dataDir, sampleName_GTSP$sampleName)
+    sampleDir <- dataDir
+#    uniqueSamples <- lapply(sampleDir, function(path){
+#        uniq_file <- file.path(path, "allSites.RData")
+#        if( file.exists(uniq_file) ){
+#          load(uniq_file)
+#        }else{
+#          allSites <- GRanges()
+#        }
+#        allSites
+#    })
+    uniqueSamples <- readRDS(file.path(dataDir, "standardized_uniq_sites.rds"))
+#    names(uniqueSamples) <- sampleName_GTSP$sampleName
+    uniqueSamples$samplename <- factor(
+      uniqueSamples$samplename, levels = sampleName_GTSP$sampleName)
+    uniqueSamples <- as.list(split(uniqueSamples, uniqueSamples$samplename))
 
-    multihitReads <- lapply(sampleDir, function(path){
-        multi_reads_file <- file.path(path, "multihitData.RData")
-        if( file.exists(multi_reads_file) ){
-          load(multi_reads_file)         
-          reads <- names(multihitData$unclusteredMultihits)
+    multiDir <- "~/data/projects/Ho_HIV/20180220_Ho_HIV/analysis_data/multihits"
+    multiPaths <- file.path(multiDir, list.files(multiDir))
+    multiPaths <- multiPaths[
+      match(sampleName_GTSP$sampleName, 
+            stringr::str_extract(list.files(multiDir), "[\\w-]+"))]
+    multihitReads <- unlist(GRangesList(lapply(multiPaths, function(path){
+        if( file.exists(path) ){
+          multihitData <- readRDS(path)         
+          return(multihitData$unclustered_multihits)
         }else{
-          reads <- c()
+          return(GRanges())
         }
-        reads
-    })
-    names(multihitReads) <- sampleName_GTSP$sampleName
+    })))
+    multihitReads <- split(
+      multihitReads, 
+      factor(multihitReads$sampleName, levels = sampleName_GTSP$sampleName))
+    multihitReads <- lapply(multihitReads, function(x) x$ID)
 
-    multihitSamples <- lapply(sampleDir, function(path){
-        multi_file <- file.path(path, "multihitData.RData")
-        if( file.exists(multi_file) ){
-          load(multi_file)
-          multihit_positions <- multihitData$clusteredMultihitPositions
-        }else{
-          multihit_positions <- GRanges()
-        }
-        multihit_positions
+#    multihitSamples <- lapply(sampleDir, function(path){
+#        multi_file <- file.path(path, "multihitData.RData")
+#        if( file.exists(multi_file) ){
+#          load(multi_file)
+#          multihit_positions <- multihitData$clusteredMultihitPositions
+#        }else{
+#          multihit_positions <- GRanges()
+#        }
+#        multihit_positions
+#    })
+#    names(multihitSamples) <- sampleName_GTSP$sampleName
+    multihitSamples <- lapply(multiPaths, function(path){
+      if( file.exists(path) ){
+        multihitData <- readRDS(path)         
+        return(multihitData$clustered_multihit_positions)
+      }else{
+        return(GRangesList())
+      }
     })
     names(multihitSamples) <- sampleName_GTSP$sampleName
-
+    
     read_sites_sample_GTSP <- get_data_totals(sampleName_GTSP, uniqueSamples, multihitReads)
 
     #### Join samples to make uniqueSites.gr and sites.multi ####
-    uniqueSamples <- do.call(c, lapply(1:length(uniqueSamples), function(i){uniqueSamples[[i]]}))
+    uniqueSamples <- do.call(c, lapply(1:length(uniqueSamples), function(i){
+      uniqueSamples[[i]]}))
     
     uniqueSites.gr <- granges(uniqueSamples)
-    uniqueSites.gr$sampleName <- uniqueSamples$sampleName
-    mcols(uniqueSites.gr) <- merge(mcols(uniqueSites.gr), sampleName_GTSP, by = "sampleName")
+    uniqueSites.gr$sampleName <- uniqueSamples$samplename
+    mcols(uniqueSites.gr) <- merge(
+      mcols(uniqueSites.gr), sampleName_GTSP, by = "sampleName")
+    uniqueSites.gr$sampleName <- factor(
+      uniqueSites.gr$sampleName, levels = sampleName_GTSP$sampleName)
+    uniqueSites.gr$GTSP <- factor(
+      uniqueSites.gr$GTSP, levels = unique(sampleName_GTSP$GTSP))
 }else{
 # Connect to my database
   if (config$dataBase == 'mysql'){
@@ -205,7 +241,8 @@ if( !length(infoPath)>0 ){
 
   sets <- get_metadata_for_GTSP(unique(sampleName_GTSP$GTSP), dbConnSampleManagemnt)
 }else{
-  sets <- read.csv(infoPath, header = TRUE)
+  #sets <- read.csv(infoPath, header = TRUE)
+  sets <- read.csv("~/data/projects/Ho_HIV/20180220_Ho_HIV/metadata.csv")
 }
 
 ## some clean up for typos, dates, spaces etc
@@ -217,9 +254,10 @@ for(col in which(!sapply(sets, class) %in% c("numeric", "integer"))) {
 }
 
 # reports are for a single patient
-stopifnot(length(unique(sets$Patient)) == 1)
-patient <- sets$Patient[1]
+#stopifnot(length(unique(sets$Patient)) == 1)
+patient <- paste(sets$Patient[1:4], collapse = "-")
 # and for a single trial
+sets$Trial <- "HIV"
 stopifnot(length(unique(sets$Trial)) == 1)
 trial <- sets$Trial[1]
 
@@ -233,7 +271,7 @@ stopifnot(nrow(sets) == length(unique(sampleName_GTSP$GTSP)))
 ##end INPUTS
 
 sets <- merge(sets, read_sites_sample_GTSP)
-sets$Timepoint <- sortFactorTimepoints(sets$Timepoint)
+#sets$Timepoint <- sortFactorTimepoints(sets$Timepoint)
 
 # at present the whole report is done for one genome
 stopifnot(length(unique(sampleName_GTSP$refGenome))==1)
@@ -256,12 +294,13 @@ if( !length(dataDir)>0 ){
 }
 
 #standardize sites across all GTSPs
-isthere <- which("dplyr" == loadedNamespaces()) # temp work around  of
+#isthere <- which("dplyr" == loadedNamespaces()) # temp work around  of
 #Known conflict with package:dplyr::count(), need to unload package if present
 # unloading and reloading the package
-if(length(isthere) > 0){detach("package:dplyr", unload = TRUE)}
-standardizedReplicatedSites <- standardizeSites(uniqueSites.gr)
-if(length(isthere) > 0){suppressMessages(library("dplyr"))}
+#if(length(isthere) > 0){detach("package:dplyr", unload = TRUE)}
+#standardizedReplicatedSites <- standardizeSites(uniqueSites.gr)
+#if(length(isthere) > 0){suppressMessages(library("dplyr"))}
+standardizedReplicatedSites <- uniqueSites.gr
 
 standardizedReplicatedSites$posid <- paste0(seqnames(standardizedReplicatedSites),
                                             strand(standardizedReplicatedSites),
@@ -313,7 +352,7 @@ populationInfo <- getPopulationInfo(standardizedReplicatedSites,
                                     "GTSP")
 populationInfo$Replicates <- sapply(split(standardizedReplicatedSites$replicate,
                                           standardizedReplicatedSites$GTSP),
-                                    max)
+                                    function(x) length(unique(x)))
 
 #========CALCULATE POPULATION SIZE/DIVERSITY INFORMATION BY TIMEPOINT==========
 timepointPopulationInfo <- getPopulationInfo(standardizedReplicatedSites,
@@ -483,10 +522,11 @@ popSummaryTable <- merge(sets,  populationInfo, by.x="GTSP", by.y="group")
 popSummaryTable <- arrange(popSummaryTable,Timepoint,CellType)
 
 cols <- c("Trial", "GTSP", "Replicates", "Patient", "Timepoint", "CellType", 
-          "TotalReads", "InferredCells", "UniqueSites", "FragMethod", "VCN", "S.chao1", "Gini", "Shannon", "UC50")
+          "TotalReads", "InferredCells", "UniqueSites", "S.chao1", "Gini", 
+          "Shannon", "UC50")
 summaryTable <- popSummaryTable[,cols]
 
-summaryTable$VCN <- ifelse(summaryTable$VCN == 0, NA, summaryTable$VCN)
+#summaryTable$VCN <- ifelse(summaryTable$VCN == 0, NA, summaryTable$VCN)
     
 timepointPopulationInfo <- melt(timepointPopulationInfo, "group")
 
