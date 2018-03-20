@@ -27,23 +27,45 @@ options(stringsAsFactors = FALSE, useFancyQuotes=FALSE)
 set_args <- function(...) {
     ## arguments from command line
     suppressMessages(library(argparse))
-    parser <- ArgumentParser(description="Gene Therapy Patient Report for Single Patient")
-    parser$add_argument("sample_gtsp", nargs='?', default='sampleName_GTSP.csv')
-    parser$add_argument("-c", default="./INSPIIRED.yml", help="path to INSPIIRED configuration file.")
-    parser$add_argument("-s", action='store_true', help="abundance by sonicLength package (Berry, C. 2012)")
-    parser$add_argument("-r", "--ref_genome", default="hg18", help="reference genome used for all samples")
-#    parser$add_argument("--sites_group", default="intsites_miseq.read", help="group to use for integration sites db from ~/.my.cnf")
-#    parser$add_argument("--gtsp_group", default="specimen_management", help="group to use for specimen management GTSP db from ~/.my.cnf")
-    parser$add_argument("-d", "--data_directory", default="", help="Set filepath to data instead of using intSite db")
-    parser$add_argument("-i", "--specimen_info", default="", help="Set filepath to specimen infomation instead of using specimen management database")
+    parser <- ArgumentParser(
+      description="Gene Therapy Patient Report for Single Patient")
+    parser$add_argument(
+      "sample_gtsp", nargs='?', default='sampleName_GTSP.csv')
+    parser$add_argument(
+      "-c", default="./INSPIIRED.yml", 
+      help="path to INSPIIRED configuration file.")
+    parser$add_argument(
+      "-s", action='store_true', 
+      help="abundance by sonicLength package (Berry, C. 2012)")
+    parser$add_argument(
+      "-r", "--ref_genome", default="hg38", 
+      help="reference genome used for all samples")
+#    parser$add_argument(
+#      "--sites_group", default="intsites_miseq.read", 
+#      help="group to use for integration sites db from ~/.my.cnf")
+#    parser$add_argument(
+#      "--gtsp_group", default="specimen_management", 
+#      help="group to use for specimen management GTSP db from ~/.my.cnf")
+    parser$add_argument(
+      "-d", "--data_directory", default="", 
+      help="Set filepath to unique sites data instead of using intSite db.")
+    parser$add_argument(
+      "--multiHits", default="", 
+      help="Set filepath to multihit site directory instead of using intSite db.")
+    parser$add_argument(
+      "-i", "--specimen_info", default="", 
+      help="Set filepath to specimen infomation instead of using specimen management database.")
+    parser$add_argument(
+      "--meta", default = "", 
+      help = "Specimen based metadata, with GTSP,Patient,CellType,Timepoint columns.")
     parser$add_argument("--ref_seq", help="read Ref Seq genes from file")
     parser$add_argument("--output", help='HTML and MD file names instead of Trial.Patient.Date name')
 
-    #arguments <- parser$parse_args(...)
+    arguments <- parser$parse_args(...)
     # Debug lines
-    cmdline <- "-c ~/INSPIIRED/INSPIIRED.yml -r hg38 -d ~/data/projects/Ho_HIV/20180220_Ho_HIV/output_data -i ~/data/projects/Ho_HIV/sampleInfo/180220.sampleInfo.csv --ref_seq ~/data/util_files/hg38.refSeq.rds --output ~/data/projects/Ho_HIV/20180220_Ho_HIV/output_data"
-    cmdline <- unlist(strsplit(cmdline, " "))
-    arguments <- parser$parse_args(cmdline)
+    #cmdline <- "-c ~/INSPIIRED/INSPIIRED.yml -r hg38 -d ~/data/projects/Ho_HIV/20180220_Ho_HIV/output_data -i ~/data/projects/Ho_HIV/sampleInfo/180220.sampleInfo.csv --ref_seq ~/data/util_files/hg38.refSeq.rds --output ~/data/projects/Ho_HIV/20180220_Ho_HIV/output_data --meta ~/data/projects/Ho_HIV/20180220_Ho_HIV/metadata.csv"
+    #cmdline <- unlist(strsplit(cmdline, " "))
+    #arguments <- parser$parse_args(cmdline)
     
     ## gene files
     arguments$oncoGeneFile <- ""
@@ -60,7 +82,9 @@ set_args <- function(...) {
     codeDir <- dirname(sub("--file=", "", grep("--file=", commandArgs(trailingOnly=FALSE), value=T)))
     #Debug line
     codeDir <- "~/INSPIIRED/components/geneTherapyPatientReportMaker"
-    if( length(codeDir)!=1 ) codeDir <- list.files(path="~", pattern="geneTherapyPatientReportMaker$", recursive=TRUE, include.dirs=TRUE, full.names=TRUE)
+    if( length(codeDir)!=1 ) codeDir <- list.files(
+      path="~", pattern="geneTherapyPatientReportMaker$", 
+      recursive=TRUE, include.dirs=TRUE, full.names=TRUE)
     stopifnot(file.exists(file.path(codeDir, "GTSPreport.css")))
     stopifnot(file.exists(file.path(codeDir, "GTSPreport.Rmd")))
     stopifnot(file.exists(file.path(codeDir, arguments$oncoGeneFile)))
@@ -110,12 +134,14 @@ source_url(paste0(url, "hiReadsProcessor.R"))
 source_url(paste0(url, "standardization_based_on_clustering.R"))
 
 #### load datasets and process them before knit #### 
-message("\nReading csv from ", csvfile)
+#message("\nReading csv from ", csvfile)
 sampleInfo <- read.csv(arguments$specimen_info)
 #sampleName_GTSP <- read.csv(csvfile)
 sampleName_GTSP <- data.frame(
   "sampleName" = sampleInfo$sampleName,
   "GTSP" = stringr::str_extract(sampleInfo$sampleName, "[\\w]+"))
+sampleName_GTSP$GTSP <- factor(
+  sampleName_GTSP$GTSP, levels = unique(sampleName_GTSP$GTSP))
 stopifnot(all(c("sampleName", "GTSP") %in% colnames(sampleName_GTSP)))
 sampleName_GTSP$refGenome <- ref_genome
 message("\nGenerating report from the following sets")
@@ -140,7 +166,7 @@ if( length(dataDir)>0 ){
       uniqueSamples$samplename, levels = sampleName_GTSP$sampleName)
     uniqueSamples <- as.list(split(uniqueSamples, uniqueSamples$samplename))
 
-    multiDir <- "~/data/projects/Ho_HIV/20180220_Ho_HIV/analysis_data/multihits"
+    multiDir <- arguments$multiHits
     multiPaths <- file.path(multiDir, list.files(multiDir))
     multiPaths <- multiPaths[
       match(sampleName_GTSP$sampleName, 
@@ -242,7 +268,7 @@ if( !length(infoPath)>0 ){
   sets <- get_metadata_for_GTSP(unique(sampleName_GTSP$GTSP), dbConnSampleManagemnt)
 }else{
   #sets <- read.csv(infoPath, header = TRUE)
-  sets <- read.csv("~/data/projects/Ho_HIV/20180220_Ho_HIV/metadata.csv")
+  sets <- read.csv(arguments$meta)
 }
 
 ## some clean up for typos, dates, spaces etc
@@ -252,12 +278,13 @@ sets$Timepoint <- gsub('_', '.', sets$Timepoint, fixed=TRUE)
 for(col in which(!sapply(sets, class) %in% c("numeric", "integer"))) {
     sets[[col]] <-  gsub("\\s", '', sets[[col]])
 }
+sets$GTSP <- factor(sets$GTSP, levels = levels(sampleName_GTSP$GTSP))
 
 # reports are for a single patient
 #stopifnot(length(unique(sets$Patient)) == 1)
-patient <- paste(sets$Patient[1:4], collapse = "-")
+patient <- paste(unique(sets$Patient), collapse = "-")
 # and for a single trial
-sets$Trial <- "HIV"
+sets$Trial <- "HIV_Inf"
 stopifnot(length(unique(sets$Trial)) == 1)
 trial <- sets$Trial[1]
 
@@ -265,17 +292,17 @@ trial <- sets$Trial[1]
 RDataFile <- paste(trial, patient, format(Sys.Date(), format="%Y%m%d"), "RData", sep=".")
 
 # all GTSP in the database
-stopifnot(nrow(sets) == length(unique(sampleName_GTSP$GTSP)))
+#stopifnot(nrow(sets) == length(unique(sampleName_GTSP$GTSP)))
 
 
 ##end INPUTS
 
-sets <- merge(sets, read_sites_sample_GTSP)
+sets <- full_join(sets, read_sites_sample_GTSP, by = "GTSP")
 #sets$Timepoint <- sortFactorTimepoints(sets$Timepoint)
 
 # at present the whole report is done for one genome
 stopifnot(length(unique(sampleName_GTSP$refGenome))==1)
-freeze <- sampleName_GTSP[1, "refGenome"]
+freeze <- arguments$ref_genome
 
 ##==========GET AND PERFORM BASIC DEREPLICATION/SONICABUND ON SITES=============
 if( !length(dataDir)>0 ){
@@ -333,7 +360,7 @@ unique_sites_per_GTSP <- sapply(split(standardizedDereplicatedSites,
                                 function(x){length(unique(x$posid))})
 unique_sites_per_GTSP <- data.frame("GTSP" = names(unique_sites_per_GTSP),
                                     "UniqueSites" = unique_sites_per_GTSP)
-sets <- merge(sets, unique_sites_per_GTSP, by = "GTSP")
+sets <- full_join(sets, unique_sites_per_GTSP, by = "GTSP")
 
 cells_recovered <- (standardizedReplicatedSites %>%
                               as.data.frame %>%
@@ -345,8 +372,11 @@ cells_recovered <- (standardizedReplicatedSites %>%
 unique_cells_per_GTSP <- data.frame("GTSP" = cells_recovered$GTSP,
                                       "InferredCells" = cells_recovered$n)                             
 
-sets <- merge(sets, unique_cells_per_GTSP, by = "GTSP")
+sets <- full_join(sets, unique_cells_per_GTSP, by = "GTSP")
 #============CALCULATE POPULATION SIZE/DIVERSITY INFORMATION=================
+standardizedDereplicatedSites$GTSP <- as.character(standardizedDereplicatedSites$GTSP)
+standardizedReplicatedSites$GTSP <- as.character(standardizedReplicatedSites$GTSP)
+
 populationInfo <- getPopulationInfo(standardizedReplicatedSites,
                                     standardizedDereplicatedSites,
                                     "GTSP")
@@ -518,8 +548,8 @@ badActorData <- lapply(badActorData, function(x){
 #==================SET VARIABLES FOR MARKDOWN REPORT=====================
 timepoint <- levels(sets$Timepoint)
 
-popSummaryTable <- merge(sets,  populationInfo, by.x="GTSP", by.y="group")
-popSummaryTable <- arrange(popSummaryTable,Timepoint,CellType)
+popSummaryTable <- full_join(sets,  populationInfo, by = c("GTSP" = "group"))
+#popSummaryTable <- arrange(popSummaryTable,Timepoint,CellType)
 
 cols <- c("Trial", "GTSP", "Replicates", "Patient", "Timepoint", "CellType", 
           "TotalReads", "InferredCells", "UniqueSites", "S.chao1", "Gini", 
@@ -622,6 +652,6 @@ markdownToHTML(mdfile, htmlfile, extensions=c('tables'),
                stylesheet=file.path(codeDir, "GTSPreport.css") )
 
 
-message("\nReport ", htmlfile, " is generated from ", csvfile)
+message("\nReport ", htmlfile, " is generated from ", arguments$specimen_info)
 save.image(RDataFile)
 
