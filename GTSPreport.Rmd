@@ -270,7 +270,7 @@ Negative distances indicate that the integration site is downstream from (i.e. a
 badActorOut <- NULL #clear it out
 badActorOut <- lapply(badActors, function(badActor){
   sites <- as.data.frame(badActorData[[badActor]])
-  if(nrow(sites)>1){
+  if(nrow(sites)>0){
     knit_child("badActorPartial.Rmd", quiet=T, envir=environment())
     }else{
       knit_expand(text=paste0("### ", badActor, "\n **No sites within 100kb of any ", badActor," TSS for this patient.**\n"))
