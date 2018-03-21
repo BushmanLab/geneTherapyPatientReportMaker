@@ -172,7 +172,10 @@ n_timepoints_for_cell_type <- mutate(
     FractionTimePointCount = TimePointCount / max(TimePointCount)
 )
 
-barplotAbunds <- left_join(barplotAbunds, n_timepoints_for_cell_type, by='CellType')
+barplotAbunds <- left_join(
+    barplotAbunds, n_timepoints_for_cell_type, by='CellType') %>%
+  mutate(maskedRefGeneName = factor(
+    maskedRefGeneName, levels = rev(names(siteColors))))
 
 ggplot(data=barplotAbunds, aes(Timepoint, estAbund, fill=maskedRefGeneName)) +
   geom_bar(aes(), stat="identity") +
@@ -191,7 +194,11 @@ ggplot(data=barplotAbunds, aes(Timepoint, estAbund, fill=maskedRefGeneName)) +
 Below are similar barplots to the previous figure, but the y-axis is scaled by proportion of the total, not number of cells sampled.  Comparison to the plot above helps distinguish samples with low yield of integration sites from samples with high yield and clonal expansions.  The key indicates the 10 most abundant clones in each sample. Cutoff values for binning clones as LowAbund (grey) are indicated at the top of each panel.
 
 ```{r sampleBarPlots, fig.height=6*(1+as.integer((n_cell_types-0.1)/3)), fig.width=12}
-barplotAbundsBySample <- left_join(barplotAbundsBySample, n_timepoints_for_cell_type, by='CellType')
+barplotAbundsBySample <- left_join(
+  barplotAbundsBySample, n_timepoints_for_cell_type, by='CellType') %>%
+  mutate(maskedRefGeneName = factor(
+    maskedRefGeneName, levels = rev(names(siteColors))))
+
 barplotAbundsBySample$CellType <- paste0(
   as.character(barplotAbundsBySample$CellType),
   "\n(cutoff = ",
