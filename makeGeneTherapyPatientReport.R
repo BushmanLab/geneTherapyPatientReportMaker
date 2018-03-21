@@ -162,6 +162,8 @@ if( length(dataDir)>0 ){
 #    })
     uniqueSamples <- readRDS(file.path(dataDir, "standardized_uniq_sites.rds"))
 #    names(uniqueSamples) <- sampleName_GTSP$sampleName
+    uniqueSamples <- uniqueSamples[
+      uniqueSamples$samplename %in% sampleName_GTSP$sampleName]
     uniqueSamples$samplename <- factor(
       uniqueSamples$samplename, levels = sampleName_GTSP$sampleName)
     uniqueSamples <- as.list(split(uniqueSamples, uniqueSamples$samplename))
@@ -205,7 +207,8 @@ if( length(dataDir)>0 ){
     })
     names(multihitSamples) <- sampleName_GTSP$sampleName
     
-    read_sites_sample_GTSP <- get_data_totals(sampleName_GTSP, uniqueSamples, multihitReads)
+    read_sites_sample_GTSP <- get_data_totals(
+      sampleName_GTSP, uniqueSamples, multihitReads)
 
     #### Join samples to make uniqueSites.gr and sites.multi ####
     uniqueSamples <- do.call(c, lapply(1:length(uniqueSamples), function(i){
@@ -269,6 +272,7 @@ if( !length(infoPath)>0 ){
 }else{
   #sets <- read.csv(infoPath, header = TRUE)
   sets <- read.csv(arguments$meta)
+  sets <- sets[sets$GTSP %in% sampleName_GTSP$GTSP,]
 }
 
 ## some clean up for typos, dates, spaces etc
@@ -289,7 +293,8 @@ stopifnot(length(unique(sets$Trial)) == 1)
 trial <- sets$Trial[1]
 
 
-RDataFile <- paste(trial, patient, format(Sys.Date(), format="%Y%m%d"), "RData", sep=".")
+RDataFile <- paste(
+  trial, patient, format(Sys.Date(), format="%Y%m%d"), "RData", sep=".")
 
 # all GTSP in the database
 #stopifnot(nrow(sets) == length(unique(sampleName_GTSP$GTSP)))
